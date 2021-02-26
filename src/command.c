@@ -502,6 +502,17 @@ struct command_def cmd_def_list[] = {
 		.async_cmd = NULL,
 	},
 	{
+		.type = CMD_SET_FCNT,
+		.group = CMD_SET,
+		.token = TOKEN_AT_FCNT,
+		.token_len = sizeof(TOKEN_AT_FCNT) - 1,
+		.cmd = AT_CMD_FCNT,
+		.cmd_len = sizeof(AT_CMD_FCNT) - 1,
+		.get_cmd = construct_set_cmd,
+		.process_cmd = wait_for_ok_or_timeout,
+		.async_cmd = NULL,
+	},
+	{
 		.type = CMD_SEND_TEXT,
 		.group = CMD_SEND,
 		.token = TOKEN_AT_SEND,

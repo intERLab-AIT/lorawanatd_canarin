@@ -118,6 +118,10 @@
 #define AT_CMD_RSSI "AT+RSSI"
 #define TOKEN_AT_RSSI "rssi"
 
+/* Frame Counters [up]:[down] */
+#define AT_CMD_FCNT "AT+FCNT"
+#define TOKEN_AT_FCNT "frame_counter"
+
 
 enum cmd_group {
 	CMD_ASYNC, /* Asynchronous events like RECV */
@@ -170,6 +174,7 @@ enum cmd_type {
 	CMD_SET_NWKID,
 	CMD_SET_CLASS,
 	CMD_SET_CFM,
+	CMD_SET_FCNT,
 	CMD_SEND_TEXT,
 	CMD_SEND_BINARY,
 	CMD_ASYNC_RECV,

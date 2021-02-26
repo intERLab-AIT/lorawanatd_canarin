@@ -70,6 +70,7 @@ The API for HTTP usages are:
 | confirmation_status    | Get confirmation status of last send | 0: not confirmed, 1: confirmed | :heavy_check_mark: | | 
 | snr                    | Get SNR of last received packet | | :heavy_check_mark:     |   |
 | rssi                   | Get RSSI of last recevied packet | | :heavy_check_mark:    |   |
+| frame_counter          | Set up and down frame counters  of LoraWan stack.| "[up]:[down]", up and down are uint32_t. |  |  :heavy_check_mark: |
 
 
 **When network join mode is changed, it resets other parameters to default firmware values, take care to set network join mode first then change the other parameters.**
