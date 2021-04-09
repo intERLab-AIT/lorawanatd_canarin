@@ -6,6 +6,7 @@
 #include <sys/queue.h>
 #include <event2/event.h>
 #include <sys/epoll.h>
+#include <stdbool.h>
 
 /* Function return status */
 enum {
