@@ -12,7 +12,7 @@
 char wspace_chars[] =  "\n\r\t ";
 #define WSPACE_CHARS_LEN sizeof(wspace_chars)/sizeof(wspace_chars[0])
 
-int init_tcp_listen_sock(int port)
+int init_tcp_listen_sock(int port, bool remote_mode)
 {
 	struct sockaddr_in listen_addr;
 	int reuseaddr_on = 1;
@@ -29,7 +29,12 @@ int init_tcp_listen_sock(int port)
 	memset(&listen_addr, 0, sizeof(listen_addr));
 
 	listen_addr.sin_family = AF_INET;
-	listen_addr.sin_addr.s_addr = INADDR_ANY;
+
+	if (remote_mode)
+		listen_addr.sin_addr.s_addr = INADDR_ANY;
+	else	
+		listen_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
 	listen_addr.sin_port = htons(port);
 
 	if (bind(listen_fd, (struct sockaddr *)&listen_addr,

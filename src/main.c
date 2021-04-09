@@ -24,11 +24,15 @@ static void log_cb(int priority, const char *msg)
 int parse_opts(struct lrwanatd *lw, int argc, char **argv)
 {
 	int opt;
-	while((opt = getopt(argc, argv, ":f:b:")) != -1) {
+	while((opt = getopt(argc, argv, ":f:r")) != -1) {
 		switch(opt) {
 			case 'f':
 				strcpy(lw->uart.file, optarg);
 				log(LOG_INFO, "uart device: %s", lw->uart.file);
+				break;
+			case 'r':
+				lw->remote_mode = true;
+				log(LOG_INFO, "remote mode on");
 				break;
 			case ':':
 				log(LOG_INFO, "option needs a value");
@@ -58,7 +62,7 @@ int init(struct lrwanatd *lw, int argc, char **argv)
 
 	lw->push.push_clientq_head = init_push_client_queue();
 
-	lw->http.fd = init_tcp_listen_sock(5555);
+	lw->http.fd = init_tcp_listen_sock(5555, lw->remote_mode);
 
 	if(lw->http.fd == RETURN_ERROR) {
 		log(LOG_INFO, "error in opening http socket.");
@@ -66,7 +70,7 @@ int init(struct lrwanatd *lw, int argc, char **argv)
 	} else
 		log(LOG_INFO, "http socket opened successfully port 5555.");
 
-	lw->push.fd = init_tcp_listen_sock(6666);
+	lw->push.fd = init_tcp_listen_sock(6666, lw->remote_mode);
 
 	if(lw->push.fd == RETURN_ERROR) {
 		log(LOG_INFO, "error in opening push socket.");

@@ -38,12 +38,12 @@ struct uart_def {
 	unsigned int baudrate;
 	char buf[8149];
 	size_t buf_len;
-  struct uart_tx_queue_head tx_q;
+	struct uart_tx_queue_head tx_q;
 #if 0
-  int epfd_in; /* epoll fd */
-  int epfd_out; /* epoll fd */
-  struct epoll_event ev_in;
-  struct epoll_event ev_out;
+	int epfd_in; /* epoll fd */
+	int epfd_out; /* epoll fd */
+	struct epoll_event ev_in;
+	struct epoll_event ev_out;
 #endif
 };
 
@@ -61,6 +61,7 @@ struct push_def {
 struct lrwanatd {
 	pid_t pid;
 	pid_t sid;
+	bool remote_mode;
 	struct event_def event;
 	struct uart_def uart;
 	struct http_def http;
