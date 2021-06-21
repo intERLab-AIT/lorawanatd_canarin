@@ -51,6 +51,18 @@ int parse_opts(struct lrwanatd *lw, int argc, char **argv)
 	return RETURN_OK;
 }
 
+static const char *recv_pattern = "\\+EVT:([0-9]+):([a-f0-9]+)..#FCNTDOWN:([0-9]+)#..\\+EVT:[A-Z0-9]+, RSSI (-?[0-9]+), SNR (-?[0-9]+)..";
+
+int init_regex(struct lrwanatd *lw)
+{
+	if (regcomp(&lw->regex.recv, recv_pattern, REG_EXTENDED)) {
+		log(LOG_ERR, "cannot compile regex: recv_pattern.");
+		return RETURN_ERROR;
+	}
+	lw->regex.n_recv_grps = 6; // 5 match groups + 1
+	return RETURN_OK;
+}
+
 int init(struct lrwanatd *lw, int argc, char **argv)
 {
 
@@ -65,7 +77,7 @@ int init(struct lrwanatd *lw, int argc, char **argv)
 	lw->http.fd = init_tcp_listen_sock(5555, lw->remote_mode);
 
 	if(lw->http.fd == RETURN_ERROR) {
-		log(LOG_INFO, "error in opening http socket.");
+		log(LOG_ERR, "error in opening http socket.");
 		return RETURN_ERROR;
 	} else
 		log(LOG_INFO, "http socket opened successfully port 5555.");
@@ -73,12 +85,15 @@ int init(struct lrwanatd *lw, int argc, char **argv)
 	lw->push.fd = init_tcp_listen_sock(6666, lw->remote_mode);
 
 	if(lw->push.fd == RETURN_ERROR) {
-		log(LOG_INFO, "error in opening push socket.");
+		log(LOG_ERR, "error in opening push socket.");
 		return RETURN_ERROR;
 	} else
 		log(LOG_INFO, "push socket opened successfully port 6666.");
 
-	/* libevent */
+	if (init_regex(lw) == RETURN_ERROR)
+		return RETURN_ERROR;
+
+		/* libevent */
 #ifdef EVENT_LOG
 	event_enable_debug_logging(EVENT_DBG_ALL);
 #endif
@@ -109,6 +124,8 @@ void clean(struct lrwanatd *lw)
 	free(lw->http.http_clientq_head);
 	free(lw->push.push_clientq_head);
 	free(lw);
+
+	regfree(&lw->regex.recv);
 }
 
 void sigint_handler(int signum)

@@ -142,6 +142,7 @@ int uart_dev_read(evutil_socket_t fd, short what, void *arg)
 
 	memcpy(lw->uart.buf + lw->uart.buf_len, buf, ret);
 	lw->uart.buf_len += ret;
+	lw->uart.buf[lw->uart.buf_len] = '\0';
 
 	run_async_cmd(lw, lw->uart.buf, lw->uart.buf_len);
 

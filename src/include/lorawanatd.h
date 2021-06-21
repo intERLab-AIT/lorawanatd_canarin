@@ -7,6 +7,7 @@
 #include <event2/event.h>
 #include <sys/epoll.h>
 #include <stdbool.h>
+#include <regex.h>
 
 /* Function return status */
 enum {
@@ -19,7 +20,7 @@ enum {
 struct event_def {
 	struct event_base *base;
 	struct event *uart_read;
-  struct event *uart_write;
+	struct event *uart_write;
 	struct event *timer_processor;
 	struct event *http_listen;
 	struct event *push_listen;
@@ -28,9 +29,9 @@ struct event_def {
 STAILQ_HEAD(uart_tx_queue_head, uart_tx);
 
 struct uart_tx {
-  STAILQ_ENTRY(uart_tx) entries;
-  char buf[1024];
-  size_t buf_len;
+	STAILQ_ENTRY(uart_tx) entries;
+	char buf[1024];
+	size_t buf_len;
 };
 
 struct uart_def {
@@ -59,6 +60,12 @@ struct push_def {
 	struct push_callbacks *cb;
 };
 
+/* All compiled regex goes here */
+struct regex_def {
+	regex_t recv;
+	uint8_t n_recv_grps;
+};
+
 struct lrwanatd {
 	pid_t pid;
 	pid_t sid;
@@ -67,6 +74,7 @@ struct lrwanatd {
 	struct uart_def uart;
 	struct http_def http;
 	struct push_def push;
+	struct regex_def regex;
 };
 
 extern struct lrwanatd *global_lw;

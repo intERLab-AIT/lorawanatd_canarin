@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <regex.h>
 #include "command.h"
 #include "logger.h"
 #include "push.h"
@@ -727,6 +728,52 @@ struct {
 	bool found;
 } _async_rx_context;
 
+
+void remove_buf_substr(struct lrwanatd *lw, size_t so, size_t eo)
+{
+	char _buf[8192];
+	char *buf = lw->uart.buf;
+	size_t buf_len = lw->uart.buf_len;
+	lw->uart.buf[lw->uart.buf_len] = '\0';
+
+	strncpy(_buf, buf, so);
+	_buf[so] = '\0';
+	strcat(_buf, buf + eo);
+
+	strcpy(lw->uart.buf, _buf);
+	lw->uart.buf_len = buf_len - (eo - so);
+}
+
+
+void async_recv(struct lrwanatd *lw, char *buf, size_t buflen)
+{
+	int ret;
+	regmatch_t match[lw->regex.n_recv_grps];
+	// use this buff as msg or error buff depenending on situtation.
+	char msgbuf[255] = { '\0' };
+	ret = regexec(&lw->regex.recv, buf, lw->regex.n_recv_grps, match, 0);
+
+	if (!ret) {
+		// got match
+		// message format is port,payload,fcntdown,event,rssi,snr
+
+		for (int i=1; i < lw->regex.n_recv_grps; i++) {
+			int len = match[i].rm_eo - match[i].rm_so;
+			strncat(msgbuf, buf + match[i].rm_so, len);
+			if (i != lw->regex.n_recv_grps - 1)
+				strcat(msgbuf, ",");
+		}
+		lw->push.cb->recv(lw, msgbuf, strlen(msgbuf));
+		remove_buf_substr(lw, match[0].rm_so, match[0].rm_eo);
+	}
+	else if (ret != REG_NOMATCH) {
+		// error, because its neither 0 nor REG_NOMATCH
+		regerror(ret, &lw->regex.recv, msgbuf, sizeof(msgbuf));
+		log(LOG_ERR, "Recv regex match failed: %s\n", msgbuf);
+	}
+}
+
+#if 0 // old receive
 void async_recv(struct lrwanatd *lw, char *buf, size_t buflen)
 {
 	const char *start_with, *should_not_follow_with, *end_with;
@@ -762,12 +809,15 @@ void async_recv(struct lrwanatd *lw, char *buf, size_t buflen)
 		}
 	}
 }
+#endif
 
 void async_has_more_tx(struct lrwanatd *lw, char *buf, size_t buflen)
 {
 	char  *str = "Network Server is asking for an uplink transmission\n\r";
-	if (!cmp_last_few_chars(buf, buflen, str))
+	if (!cmp_last_few_chars(buf, buflen, str)) {
 		lw->push.cb->more_tx(lw, NULL, 0); /* Yay, a successful match, push it out */
+		// clean it?
+	}
 }
 
 struct cmd_queue_head *init_cmd_queue()
