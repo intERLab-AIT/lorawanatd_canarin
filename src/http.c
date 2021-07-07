@@ -519,6 +519,12 @@ void process_http_clients(struct lrwanatd *lw)
 
 				free(jsondata);
 				free_http_client(lw, client);
+
+                if (!client->timed_out && (cmd->def.type = CMD_SEND_BINARY || 
+                        cmd->def.type == CMD_SEND_TEXT ||
+                        cmd->def.type == CMD_JOIN)) {
+                    store_firmware_context(cmd->def.type);
+                }
 			}
 		}
 		else if (client->state < HTTP_CLIENT_ACTIVE) {

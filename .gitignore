@@ -6,6 +6,7 @@ config.h.in~
 tags
 build_aux
 vgcore.*
+cscope.out
 
 # http://www.gnu.org/software/automake
 

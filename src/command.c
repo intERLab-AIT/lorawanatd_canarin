@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <regex.h>
+#include <stdlib.h>
 #include "command.h"
 #include "logger.h"
 #include "push.h"
@@ -14,13 +15,14 @@
 */
 #define RX_NEWLINE 		"\r\n"
 
-#define JOINED_RESPONSE "JOINED\n\r"
+#define JOINED_RESPONSE "+EVT:JOINED\r\n"
 
 /* Construct the cmds function defs */
-char *construct_raw_cmd(struct command *cmd);
+char * construct_raw_cmd(struct command *cmd);
 char * construct_get_cmd(struct command *cmd);
 char * construct_set_cmd(struct command *cmd);
 char * construct_send_cmd(struct command *cmd);
+char * construct_join_cmd(struct command *cmd);
 
 /* Process the rx function defs */
 enum cmd_res_code wait_for_ok(struct command *cmd);
@@ -31,6 +33,14 @@ enum cmd_res_code wait_for_ok_or_timeout(struct command *cmd);
 /* Async response processors */
 void async_recv(struct lrwanatd *lw, char *buf, size_t buflen);
 void async_has_more_tx(struct lrwanatd *lw, char *buf, size_t buflen);
+
+
+/* Local commands */
+char * get_njm_cmd(struct command *cmd);
+char * get_cfm_cmd(struct command *cmd);
+
+char * set_njm_cmd(struct command *cmd);
+char * set_cfm_cmd(struct command *cmd);
 
 
 char *response[] = {
@@ -69,7 +79,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_JOIN) - 1,
 		.cmd = AT_CMD_JOIN,
 		.cmd_len = sizeof(AT_CMD_JOIN) - 1,
-		.get_cmd = construct_raw_cmd,
+		.get_cmd = construct_join_cmd,
 		.process_cmd = wait_for_joined_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -223,9 +233,10 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_NJM) - 1,
 		.cmd = AT_CMD_NJM,
 		.cmd_len = sizeof(AT_CMD_NJM) - 1,
-		.get_cmd = construct_get_cmd,
+		.get_cmd = get_njm_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
+		.local_state = true,
 	},
 	{
 		.type = CMD_GET_NWKID,
@@ -267,9 +278,10 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_CFM) - 1,
 		.cmd = AT_CMD_CFM,
 		.cmd_len = sizeof(AT_CMD_CFM) - 1,
-		.get_cmd = construct_get_cmd,
+		.get_cmd = get_cfm_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
+		.local_state = true,
 	},
 	{
 		.type = CMD_GET_CFS,
@@ -465,9 +477,10 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_NJM) - 1,
 		.cmd = AT_CMD_NJM,
 		.cmd_len = sizeof(AT_CMD_NJM) - 1,
-		.get_cmd = construct_set_cmd,
+		.get_cmd = set_njm_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
+		.local_state = true,
 	},
 	{
 		.type = CMD_SET_NWKID,
@@ -498,9 +511,10 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_CFM) - 1,
 		.cmd = AT_CMD_CFM,
 		.cmd_len = sizeof(AT_CMD_CFM) - 1,
-		.get_cmd = construct_set_cmd,
+		.get_cmd = set_cfm_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
+		.local_state = true,
 	},
 	{
 		.type = CMD_SET_FCNT,
@@ -579,6 +593,21 @@ char *construct_raw_cmd(struct command *cmd)
 	return buf;
 }
 
+char *construct_join_cmd(struct command *cmd)
+{
+	char *buf, *strptr;
+	size_t buflen;
+
+	buflen = cmd->def.cmd_len /* AT+JOIN */ + 2 /* =[0/1] */ + 1; 
+
+	buf = malloc(buflen);
+
+	sprintf(buf, "%.*s=%u", (int)cmd->def.cmd_len, cmd->def.cmd, global_lw->params.network_join_mode);
+	buf[buflen] = '\0';
+
+	return buf;
+}
+
 char * construct_get_cmd(struct command *cmd)
 {
 	const char *postfix;
@@ -638,47 +667,114 @@ char * construct_send_cmd(struct command *cmd)
 	const char *eqstr, *sepstr;
 	char *buf, *strptr;
 	size_t buflen, eqstrlen, sepstrlen;
+	/* AT+SEND=[port]:[confirmation_mode]:[data] */
+
+	buflen = cmd->def.cmd_len /* AT+SEND/B */ +
+		1 /* = */ +
+		cmd->param.send.port_len /* [port] */+
+		3 /* :[cfm]: */ +
+		cmd->param.send.param_len /* [data] */ +
+		1 /* \0 */;
 
 	eqstr = "=";
 	eqstrlen = strlen(eqstr);
 	sepstr = ":";
 	sepstrlen = strlen(sepstr);
 
+
 	buflen = cmd->def.cmd_len + eqstrlen +
 		cmd->param.send.port_len + sepstrlen +
-		cmd->param.send.param_len + 1;
+		cmd->param.send.param_len + 2;
 
 	buf = malloc(buflen);
 
-	strptr = buf;
-
-	strncpy(strptr, cmd->def.cmd, cmd->def.cmd_len);
-	strptr += cmd->def.cmd_len;
-
-	strncpy(strptr, eqstr, eqstrlen);
-	strptr += eqstrlen;
-
-	strncpy(strptr, cmd->param.send.port, cmd->param.send.port_len);
-	strptr += cmd->param.send.port_len;
-
-	strncpy(strptr, sepstr, sepstrlen);
-	strptr += sepstrlen;
-
-	strncpy(strptr, cmd->param.send.param, cmd->param.send.param_len);
-	strptr += cmd->param.send.param_len;
-
-	*strptr = '\0';
+	sprintf(buf, "%.*s=%.*s:%u:%.*s",
+		(int)cmd->def.cmd_len, cmd->def.cmd,
+		(int)cmd->param.send.port_len, cmd->param.send.port,
+		global_lw->params.confirmation_mode,
+		(int)cmd->param.send.param_len + 1, cmd->param.send.param);
+			   
+	buf[buflen] = '\0';
 	return buf;
 }
 
-int cmp_last_few_chars(char *buf, size_t buflen, const char *str)
+char * get_njm_cmd(struct command *cmd)
 {
-	char *spos;
+	char *result;
+	result = malloc(16);
+	sprintf(result, "%u\r\nOK\r\n", global_lw->params.network_join_mode);
+	return result;
+}
+
+char * get_cfm_cmd(struct command *cmd)
+{
+	char *result;
+	result = malloc(16);
+	sprintf(result, "%u\r\nOK\r\n", global_lw->params.confirmation_mode);
+	return result;
+}
+
+char * set_njm_cmd(struct command *cmd)
+{
+	char *result;
+	char buf[16];
+	uint8_t code = 0;
+
+	strncpy(buf, cmd->param.set.param, cmd->param.set.param_len);
+	buf[cmd->param.set.param_len] = '\0';
+
+	result = malloc(16);
+
+	code = strtol(cmd->param.set.param, NULL, 10);
+	if (code < 0 || code > 1) {
+		strcpy(result, "\r\nAT_ERROR\r\n");
+	}
+	else {
+		global_lw->params.network_join_mode = code;
+		strcpy(result, "\r\nOK\r\n");
+	}
+
+	log(LOG_INFO, "network join mode = %u", global_lw->params.network_join_mode);
+	return result;
+}
+
+char * set_cfm_cmd(struct command *cmd)
+{
+	char *result;
+	char buf[16];
+	uint8_t code = 0;
+
+	strncpy(buf, cmd->param.set.param, cmd->param.set.param_len);
+	buf[cmd->param.set.param_len] = '\0';
+
+	result = malloc(16);
+
+	code = strtol(cmd->param.set.param, NULL, 10);
+	if (code < 0 || code > 1) {
+		strcpy(result, "\r\nAT_ERROR\r\n");
+	}
+	else {
+		global_lw->params.confirmation_mode = code;
+		strcpy(result, "\r\nOK\r\n");
+	}
+
+	log(LOG_INFO, "confimation mode = %u", global_lw->params.confirmation_mode);
+	return result;
+}
+
+bool cmp_last_few_chars(char *buf, size_t buflen, const char *str)
+{
+	/*char *spos;
 	size_t str_len;
 
 	str_len = strlen(str);
 	spos = buf + (buflen - str_len);
 	return strncmp(spos, str, str_len);
+	*/
+	char *tbuf = malloc(buflen + 1);
+	strncpy(tbuf, buf, buflen);
+	tbuf[buflen] = '\0';
+	return strstr(tbuf, str) == NULL;
 }
 
 enum cmd_res_code wait_for_ok(struct command *cmd)
@@ -765,6 +861,8 @@ void async_recv(struct lrwanatd *lw, char *buf, size_t buflen)
 		}
 		lw->push.cb->recv(lw, msgbuf, strlen(msgbuf));
 		remove_buf_substr(lw, match[0].rm_so, match[0].rm_eo);
+        
+		store_firmware_context(CMD_ASYNC_RECV);
 	}
 	else if (ret != REG_NOMATCH) {
 		// error, because its neither 0 nor REG_NOMATCH
@@ -929,4 +1027,9 @@ void clear_uart_buf(size_t *buflen)
 	*buflen = 0;
 	_async_rx_context.found = false;
 	_async_rx_context.start = _async_rx_context.end = 0;
+}
+
+
+void store_firmware_context(enum cmd_type cmd_type)
+{
 }

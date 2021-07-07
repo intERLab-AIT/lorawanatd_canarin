@@ -24,11 +24,15 @@ static void log_cb(int priority, const char *msg)
 int parse_opts(struct lrwanatd *lw, int argc, char **argv)
 {
 	int opt;
-	while((opt = getopt(argc, argv, ":f:r")) != -1) {
+	while((opt = getopt(argc, argv, ":f:b:r")) != -1) {
 		switch(opt) {
 			case 'f':
 				strcpy(lw->uart.file, optarg);
 				log(LOG_INFO, "uart device: %s", lw->uart.file);
+				break;
+			case 'b':
+				lw->uart.baudrate = strtol(optarg, NULL, 10);
+				log(LOG_INFO, "uart baudrate: %u", lw->uart.baudrate);
 				break;
 			case 'r':
 				lw->remote_mode = true;
@@ -45,6 +49,11 @@ int parse_opts(struct lrwanatd *lw, int argc, char **argv)
 
 	if (!strlen(lw->uart.file)) {
 		log(LOG_INFO, "Invalid uart device parameters.");
+		return RETURN_ERROR;
+	}
+
+	if (lw->uart.baudrate < 0) {
+		log(LOG_INFO, "Invalid uart baudrate.");
 		return RETURN_ERROR;
 	}
 
@@ -65,7 +74,6 @@ int init_regex(struct lrwanatd *lw)
 
 int init(struct lrwanatd *lw, int argc, char **argv)
 {
-
 	lw->pid = getpid();
 	lw->sid = getsid(lw->pid);
 	log(LOG_INFO, "LoRaWANATd started. Pid:%d, Sid:%d.", lw->pid, lw->sid);
@@ -89,6 +97,10 @@ int init(struct lrwanatd *lw, int argc, char **argv)
 		return RETURN_ERROR;
 	} else
 		log(LOG_INFO, "push socket opened successfully port 6666.");
+
+	memset(&lw->params, 0, sizeof(struct params_storage));
+	lw->params.network_join_mode = 1; /* OTAA by default */
+	lw->params.confirmation_mode = 0; /* No confirmation by default */
 
 	if (init_regex(lw) == RETURN_ERROR)
 		return RETURN_ERROR;

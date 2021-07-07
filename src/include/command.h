@@ -75,6 +75,7 @@
 #define TOKEN_AT_JN2DL "join2_delay"
 
 /* Network Join Mode, 0: ABP, 1: OTA */
+/* This should be handled by lorawanatd now */
 #define AT_CMD_NJM "AT+NJM"
 #define TOKEN_AT_NJM "network_join_mode"
 
@@ -95,7 +96,7 @@
 #define TOKEN_AT_NJS "network_join_status"
 
 /* Send Hex */
-#define AT_CMD_SENDB "AT+SENDB"
+#define AT_CMD_SENDB "AT+SEND"
 #define TOKEN_AT_SENDB "sendb"
 
 /* Send Text */
@@ -121,6 +122,9 @@
 /* Frame Counters [up]:[down] */
 #define AT_CMD_FCNT "AT+FCNT"
 #define TOKEN_AT_FCNT "frame_counter"
+
+#define AT_CMD_CTX "AT+CTX"
+#define TOKEN_AT_CTX "context"
 
 
 enum cmd_group {
@@ -196,7 +200,6 @@ enum cmd_res_code {
 	CMD_RES_OK = 0,
 };
 
-
 struct command_def; /* command definition */
 struct command;
 
@@ -216,6 +219,7 @@ struct command_def {
 	get_cmd_fp get_cmd;
 	process_cmd_fp process_cmd;
 	async_cmd_fp async_cmd;
+	bool local_state;
 };
 
 struct command_param_set {
@@ -268,4 +272,5 @@ void clear_uart_buf(size_t *buflen);
 
 void free_cmd_queue(struct cmd_queue_head *cmdq_head);
 
+void store_firmware_context(enum cmd_type cmd_type);
 #endif
