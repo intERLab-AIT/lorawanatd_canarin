@@ -598,11 +598,12 @@ char *construct_join_cmd(struct command *cmd)
 	char *buf, *strptr;
 	size_t buflen;
 
-	buflen = cmd->def.cmd_len /* AT+JOIN */ + 2 /* =[0/1] */ + 1; 
+	buflen = cmd->def.cmd_len /* AT+JOIN */ + 2 /* =[0/1] */;
 
-	buf = malloc(buflen);
+	buf = malloc(buflen + 1);
 
-	sprintf(buf, "%.*s=%u", (int)cmd->def.cmd_len, cmd->def.cmd, global_lw->params.network_join_mode);
+	sprintf(buf, "%.*s=%u", (int)cmd->def.cmd_len, cmd->def.cmd,
+            global_lw->ctx_mngr.lwan_ctx->network_join_mode);
 	buf[buflen] = '\0';
 
 	return buf;
@@ -673,9 +674,8 @@ char * construct_send_cmd(struct command *cmd)
 		1 /* = */ +
 		cmd->param.send.port_len /* [port] */+
 		3 /* :[cfm]: */ +
-		cmd->param.send.param_len /* [data] */ +
-		1 /* \0 */;
-
+		cmd->param.send.param_len /* [data] */;
+    /*
 	eqstr = "=";
 	eqstrlen = strlen(eqstr);
 	sepstr = ":";
@@ -685,13 +685,13 @@ char * construct_send_cmd(struct command *cmd)
 	buflen = cmd->def.cmd_len + eqstrlen +
 		cmd->param.send.port_len + sepstrlen +
 		cmd->param.send.param_len + 2;
-
-	buf = malloc(buflen);
+    */
+	buf = malloc(buflen + 4);
 
 	sprintf(buf, "%.*s=%.*s:%u:%.*s",
 		(int)cmd->def.cmd_len, cmd->def.cmd,
 		(int)cmd->param.send.port_len, cmd->param.send.port,
-		global_lw->params.confirmation_mode,
+		global_lw->ctx_mngr.lwan_ctx->confirmation_mode,
 		(int)cmd->param.send.param_len + 1, cmd->param.send.param);
 			   
 	buf[buflen] = '\0';
@@ -702,7 +702,8 @@ char * get_njm_cmd(struct command *cmd)
 {
 	char *result;
 	result = malloc(16);
-	sprintf(result, "%u\r\nOK\r\n", global_lw->params.network_join_mode);
+	sprintf(result, "%u\r\nOK\r\n",
+            global_lw->ctx_mngr.lwan_ctx->network_join_mode);
 	return result;
 }
 
@@ -710,7 +711,8 @@ char * get_cfm_cmd(struct command *cmd)
 {
 	char *result;
 	result = malloc(16);
-	sprintf(result, "%u\r\nOK\r\n", global_lw->params.confirmation_mode);
+	sprintf(result, "%u\r\nOK\r\n",
+            global_lw->ctx_mngr.lwan_ctx->confirmation_mode);
 	return result;
 }
 
@@ -723,18 +725,18 @@ char * set_njm_cmd(struct command *cmd)
 	strncpy(buf, cmd->param.set.param, cmd->param.set.param_len);
 	buf[cmd->param.set.param_len] = '\0';
 
-	result = malloc(16);
-
 	code = strtol(cmd->param.set.param, NULL, 10);
 	if (code < 0 || code > 1) {
-		strcpy(result, "\r\nAT_ERROR\r\n");
+		result = response[2];
 	}
 	else {
-		global_lw->params.network_join_mode = code;
-		strcpy(result, "\r\nOK\r\n");
+		global_lw->ctx_mngr.lwan_ctx->network_join_mode = code;
+		result = response[0];
 	}
 
-	log(LOG_INFO, "network join mode = %u", global_lw->params.network_join_mode);
+	log(LOG_INFO, "network join mode = %u",
+        global_lw->ctx_mngr.lwan_ctx->network_join_mode);
+
 	return result;
 }
 
@@ -747,19 +749,19 @@ char * set_cfm_cmd(struct command *cmd)
 	strncpy(buf, cmd->param.set.param, cmd->param.set.param_len);
 	buf[cmd->param.set.param_len] = '\0';
 
-	result = malloc(16);
 
 	code = strtol(cmd->param.set.param, NULL, 10);
 	if (code < 0 || code > 1) {
-		strcpy(result, "\r\nAT_ERROR\r\n");
+        result = response[2];
 	}
 	else {
-		global_lw->params.confirmation_mode = code;
-		strcpy(result, "\r\nOK\r\n");
+		global_lw->ctx_mngr.lwan_ctx->confirmation_mode = code;
+        result = response[0];
 	}
 
-	log(LOG_INFO, "confimation mode = %u", global_lw->params.confirmation_mode);
-	return result;
+	log(LOG_INFO, "confirmation mode = %u",
+        global_lw->ctx_mngr.lwan_ctx->confirmation_mode);
+    return result;
 }
 
 bool cmp_last_few_chars(char *buf, size_t buflen, const char *str)
@@ -774,7 +776,9 @@ bool cmp_last_few_chars(char *buf, size_t buflen, const char *str)
 	char *tbuf = malloc(buflen + 1);
 	strncpy(tbuf, buf, buflen);
 	tbuf[buflen] = '\0';
-	return strstr(tbuf, str) == NULL;
+	bool result = strstr(tbuf, str) == NULL;
+	free(tbuf);
+	return result;
 }
 
 enum cmd_res_code wait_for_ok(struct command *cmd)

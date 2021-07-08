@@ -8,6 +8,7 @@
 #include <sys/epoll.h>
 #include <stdbool.h>
 #include <regex.h>
+#include "context_manager.h"
 
 /* Function return status */
 enum {
@@ -66,15 +67,6 @@ struct regex_def {
 	uint8_t n_recv_grps;
 };
 
-/* Persistant storage */
-struct params_storage {
-	uint8_t network_join_mode;
-	uint8_t confirmation_mode;
-	/* lora firmware data */
-	size_t ctx_len[6];
-	char ctx[6][1024];
-};
-
 struct lrwanatd {
 	pid_t pid;
 	pid_t sid;
@@ -84,7 +76,7 @@ struct lrwanatd {
 	struct http_def http;
 	struct push_def push;
 	struct regex_def regex;
-	struct params_storage params;
+	struct context_manager ctx_mngr;
 };
 
 extern struct lrwanatd *global_lw;

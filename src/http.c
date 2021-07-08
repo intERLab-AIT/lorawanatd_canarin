@@ -3,10 +3,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <stdlib.h>
-#include <err.h>
 #include <arpa/inet.h>
 #include <string.h>
-#include <assert.h>
 #include "http.h"
 #include "command.h"
 #include "uart.h"
@@ -164,7 +162,7 @@ int parse_json_content_add_cmd(struct http_client *client)
 {
 	struct command *cmd = NULL;
 	char *data, *port;
-	size_t datalen, portlen;
+	size_t data_len, port_len;
 	jsmn_parser p;
 	jsmntok_t t[128];
 	jsmntok_t *tok, *tok1, *tok2;
@@ -245,7 +243,7 @@ int parse_json_content_add_cmd(struct http_client *client)
 			*		"port": 21,
 			*	}
 			*/
-			datalen = portlen = 0;
+			data_len = port_len = 0;
 			data = port = NULL;
 
 			if (t[0].type != JSMN_OBJECT)
@@ -263,21 +261,21 @@ int parse_json_content_add_cmd(struct http_client *client)
 
 				if (!strncmp(tkstr, "data", tklen)) {
 					data = param;
-					datalen = paramlen;
+                    data_len = paramlen;
 				}
 				else if (!strncmp(tkstr, "port", tklen)) {
 					port = param;
-					portlen = paramlen;
+                    port_len = paramlen;
 				}
 			}
 
 			if (data && port) {
 				if (client->action == HTTP_SEND_DATA)
 					cmd = make_cmd(TOKEN_AT_SEND, sizeof(TOKEN_AT_SEND) - 1,
-							data, datalen, port, portlen, 0, CMD_SEND);
+                                   data, data_len, port, port_len, 0, CMD_SEND);
 				else
 					cmd = make_cmd(TOKEN_AT_SENDB, sizeof(TOKEN_AT_SENDB) - 1,
-							data, datalen, port, portlen, 0, CMD_SEND);
+                                   data, data_len, port, port_len, 0, CMD_SEND);
 
 				if (cmd)
 					STAILQ_INSERT_TAIL(client->cmdq_head, cmd, entries);
@@ -352,6 +350,29 @@ void on_read_http(evutil_socket_t fd, short what, void *arg)
 	}
 }
 
+struct http_client * create_http_client(struct lrwanatd *lw, int fd)
+{
+    struct http_client *client;
+    client = malloc(sizeof(struct http_client));
+    client->fd = fd;
+    client->cmdq_head = init_cmd_queue();
+    client->is_json = client->timed_out =  false;
+    client->buf_len = client->request.path_len =
+    client->request.header_len = client->request.method_len =
+    client->request.content_len = 0;
+    client->state = HTTP_CLIENT_ACTIVE;
+
+    strcpy(client->error_resp, HTTP_ERROR_500);
+
+    memset(client->buf, 0, sizeof(client->buf));
+
+    client->read_event = event_new(lw->event.base, fd, EV_READ|EV_PERSIST,
+                                   on_read_http, (void *)client);
+    event_priority_set(client->read_event, 1);
+
+    return client;
+}
+
 void on_accept_http(evutil_socket_t fd, short what, void *arg)
 {
 	struct lrwanatd *lw = (struct lrwanatd *)arg;
@@ -370,23 +391,9 @@ void on_accept_http(evutil_socket_t fd, short what, void *arg)
 	if (set_nonblock_sock(client_fd) < 0)
 		log(LOG_INFO, "http sock non blocking not set.");
 
-	client = malloc(sizeof(struct http_client));
-	client->fd = client_fd;
-	client->cmdq_head = init_cmd_queue();
-	client->is_json = client->timed_out =  false;
-	client->buf_len = client->request.path_len =
-		client->request.header_len = client->request.method_len =
-		client->request.content_len = 0;
-	client->state = HTTP_CLIENT_ACTIVE;
-
-	strcpy(client->error_resp, HTTP_ERROR_500);
-
-	memset(client->buf, 0, sizeof(client->buf));
+	client = create_http_client(lw, client_fd);
 	STAILQ_INSERT_TAIL(lw->http.http_clientq_head, client, entries);
 
-	client->read_event = event_new(lw->event.base, client_fd, EV_READ|EV_PERSIST,
-			on_read_http, (void *)client);
-	event_priority_set(client->read_event, 1);
 	event_add(client->read_event, NULL);
 
 	log(LOG_INFO, "accepted http connection from %s with fd %d\n",
@@ -494,6 +501,10 @@ void process_http_clients(struct lrwanatd *lw)
 							clear_uart_buf(&(lw->uart.buf_len));
 							break;
 					}
+                    enum cmd_type type = cmd->def.type;
+                    if (type == CMD_SEND_BINARY || type == CMD_SEND_TEXT || type == CMD_JOIN) {
+                        store_firmware_context(type);
+                    }
 					return;
 				} else if (cmd->state == CMD_ERROR) {
 					/* Send a bunch of new line to try recover from error. */
@@ -518,13 +529,9 @@ void process_http_clients(struct lrwanatd *lw)
 				http_client_write(client, jsondata, strlen(jsondata));
 
 				free(jsondata);
-				free_http_client(lw, client);
 
-                if (!client->timed_out && (cmd->def.type = CMD_SEND_BINARY || 
-                        cmd->def.type == CMD_SEND_TEXT ||
-                        cmd->def.type == CMD_JOIN)) {
-                    store_firmware_context(cmd->def.type);
-                }
+                free_http_client(lw, client);
+
 			}
 		}
 		else if (client->state < HTTP_CLIENT_ACTIVE) {

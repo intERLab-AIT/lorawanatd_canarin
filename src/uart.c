@@ -345,9 +345,11 @@ void setup_uart_loop_timer(struct lrwanatd *lw, bool isInit)
 {
 	struct timeval timer = { 0, TIMER_USEC_INTERVAL };
 
-	if (!isInit)
-		evtimer_del(lw->event.timer_processor);
-	lw->event.timer_processor = evtimer_new(lw->event.base, cb_timer, (void *)lw);
+	//if (!isInit)
+		//evtimer_del(lw->event.timer_processor);
+	if (isInit) {
+        lw->event.timer_processor = evtimer_new(lw->event.base, cb_timer, (void *) lw);
+    }
 	evtimer_add(lw->event.timer_processor, &timer);
 }
 

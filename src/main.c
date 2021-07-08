@@ -98,9 +98,7 @@ int init(struct lrwanatd *lw, int argc, char **argv)
 	} else
 		log(LOG_INFO, "push socket opened successfully port 6666.");
 
-	memset(&lw->params, 0, sizeof(struct params_storage));
-	lw->params.network_join_mode = 1; /* OTAA by default */
-	lw->params.confirmation_mode = 0; /* No confirmation by default */
+    context_manager_init(&lw->ctx_mngr);
 
 	if (init_regex(lw) == RETURN_ERROR)
 		return RETURN_ERROR;
