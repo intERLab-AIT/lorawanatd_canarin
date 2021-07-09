@@ -8,6 +8,7 @@ build_aux
 vgcore.*
 cscope.out
 .idea/
+lwan_context.bin
 
 # http://www.gnu.org/software/automake
 

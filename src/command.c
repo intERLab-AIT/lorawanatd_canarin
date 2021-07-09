@@ -28,6 +28,7 @@ char * construct_context_restore_cmd(struct command *cmd);
 /* Process the rx function defs */
 enum cmd_res_code wait_for_ok(struct command *cmd);
 enum cmd_res_code wait_for_timeout(struct command *cmd);
+enum cmd_res_code wait_for_good_timeout(struct command *cmd);
 enum cmd_res_code wait_for_joined_or_timeout(struct command *cmd);
 enum cmd_res_code wait_for_ok_or_timeout(struct command *cmd);
 
@@ -60,7 +61,18 @@ struct command_def cmd_def_list[] = {
 		.cmd = AT_CMD_RESET,
 		.cmd_len = sizeof(AT_CMD_RESET) - 1,
 		.get_cmd = construct_raw_cmd,
-		.process_cmd = wait_for_timeout,
+		.process_cmd = wait_for_good_timeout,
+		.async_cmd = NULL,
+	},
+	{
+		.type = CMD_HARD_RESET,
+		.group = CMD_ACTION,
+		.token = TOKEN_AT_HARD_RESET,
+		.token_len = sizeof(TOKEN_AT_HARD_RESET) - 1,
+		.cmd = AT_CMD_RESET,
+		.cmd_len = sizeof(AT_CMD_RESET) - 1,
+		.get_cmd = construct_raw_cmd,
+		.process_cmd = wait_for_good_timeout,
 		.async_cmd = NULL,
 	},
 	{
@@ -836,6 +848,17 @@ enum cmd_res_code wait_for_timeout(struct command *cmd)
 	if (cmd->timeout <= now) {
 		log(LOG_INFO, "command %p timed out.", cmd);
 		return CMD_RES_TIMEOUT;
+	}
+	return CMD_RES_WAITING;
+}
+
+enum cmd_res_code wait_for_good_timeout(struct command *cmd)
+{
+	/* sometimes a timeout is okay :D */
+	time_t now = time(NULL);
+	if (cmd->timeout <= now) {
+		log(LOG_INFO, "command %p timed out.", cmd);
+		return CMD_RES_OK;
 	}
 	return CMD_RES_WAITING;
 }

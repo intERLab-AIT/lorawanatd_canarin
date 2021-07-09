@@ -12,6 +12,7 @@ STAILQ_HEAD(http_client_queue_head, http_client);
 enum http_action {
 	HTTP_UNDEFINED,
 	HTTP_RESET,
+	HTTP_HARD_RESET,
 	HTTP_STATUS,
 	HTTP_JOIN,
 	HTTP_GET_CONFIG,

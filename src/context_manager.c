@@ -195,13 +195,18 @@ void context_acquired(struct command *cmd)
 	write_context();
 }
 
+void reset_lwan_ctx()
+{
+	memset(&lwan_ctx, 0 , sizeof(struct lwan_context));
+	lwan_ctx.network_join_mode = 1;
+	lwan_ctx.confirmation_mode = 0;
+
+}
+
 void context_manager_init(struct context_manager *ctx_mngr)
 {
 	this = ctx_mngr;
 	this->lwan_ctx = &lwan_ctx;
-	memset(this->lwan_ctx, 0 , sizeof(struct lwan_context));
-	this->lwan_ctx->network_join_mode = 1;
-	this->lwan_ctx->confirmation_mode = 0;
 	read_context();
 	restore_firmware_context();
 }
@@ -222,6 +227,13 @@ void context_manager_event(enum cmd_type cmd_type, struct command *cmd)
 			break;
 		case CMD_ACQUIRE_CONTEXT:
 			context_acquired(cmd);
+			break;
+		case CMD_RESET:
+			restore_firmware_context();
+			break;
+		case CMD_HARD_RESET:
+			reset_lwan_ctx();
+			write_context();
 			break;
 		default:
 			break;

@@ -9,6 +9,7 @@
 /* Reset the lora board */
 #define AT_CMD_RESET "ATZ"
 #define TOKEN_AT_RESET "reset"
+#define TOKEN_AT_HARD_RESET "hard_reset"
 
 /* Get OK status */
 #define AT_CMD "AT"
@@ -138,6 +139,7 @@ enum cmd_group {
 
 enum cmd_type {
 	CMD_RESET,
+	CMD_HARD_RESET,
 	CMD_STATUS,
 	CMD_JOIN,
 	CMD_GET_DEUI,
@@ -226,25 +228,18 @@ struct command_def {
 };
 
 struct command_param_set {
-	time_t timeout;
 	char *param;
 	size_t param_len;
 };
 
 struct command_param_send {
-	time_t timeout;
 	char *param;
 	size_t param_len;
 	char *port;
 	size_t port_len;
 };
 
-struct command_param_timeout {
-	time_t timeout;
-};
-
 struct command_param_internal {
-	time_t timeout;
 	int context_type;
 };
 

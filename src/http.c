@@ -33,6 +33,8 @@ char * get_http_action_string(enum http_action action)
 			return "Undefined";
 		case HTTP_RESET:
 			return "Reset";
+		case HTTP_HARD_RESET:
+			return "Hard Reset";
 		case HTTP_STATUS:
 			return "Status";
 		case HTTP_JOIN:
@@ -56,6 +58,10 @@ enum http_action get_action_from_http_request(struct http_client *client)
 	if (strncmp("GET", client->request.method , client->request.method_len) == 0
 			&& strncmp("/reset", client->request.path, client->request.path_len) == 0)
 		return HTTP_RESET;
+
+	if (strncmp("GET", client->request.method , client->request.method_len) == 0
+		&& strncmp("/hard_reset", client->request.path, client->request.path_len) == 0)
+		return HTTP_HARD_RESET;
 
 	if (strncmp("GET", client->request.method , client->request.method_len) == 0
 			&& strncmp("/status", client->request.path, client->request.path_len) == 0)
@@ -140,6 +146,10 @@ int add_cmd(struct http_client *client)
 		case HTTP_RESET:
 			cmd = make_cmd(TOKEN_AT_RESET, sizeof(TOKEN_AT_RESET) - 1,
 					NULL, 5, CMD_ACTION);
+			break;
+		case HTTP_HARD_RESET:
+			cmd = make_cmd(TOKEN_AT_HARD_RESET, sizeof(TOKEN_AT_HARD_RESET) - 1,
+						   NULL, 5, CMD_ACTION);
 			break;
 		case HTTP_STATUS:
 			cmd = make_cmd(TOKEN_AT, sizeof(TOKEN_AT) - 1,
