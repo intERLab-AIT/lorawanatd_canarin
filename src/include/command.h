@@ -124,15 +124,16 @@
 #define TOKEN_AT_FCNT "frame_counter"
 
 #define AT_CMD_CTX "AT+CTX"
-#define TOKEN_AT_CTX "context"
-
+#define TOKEN_AT_CTX_ACQ "context_acquire"
+#define TOKEN_AT_CTX_RES "context_restore"
 
 enum cmd_group {
 	CMD_ASYNC, /* Asynchronous events like RECV */
 	CMD_ACTION, /* Single one shot commands like AT, ATZ and AT+JOIN */
 	CMD_GET, /* Get value from Mcu */
 	CMD_SET, /* Set value in Mcu */
-	CMD_SEND /* Send over LoRaWAN */
+	CMD_SEND, /* Send over LoRaWAN */
+	CMD_INTERNAL, /* Internal commands, not exposed through HTTP API */
 };
 
 enum cmd_type {
@@ -183,6 +184,8 @@ enum cmd_type {
 	CMD_SEND_BINARY,
 	CMD_ASYNC_RECV,
 	CMD_ASYNC_MORE_TX,
+	CMD_ACQUIRE_CONTEXT,
+	CMD_RESTORE_CONTEXT,
 	CMD_TYPE_MAX,
 };
 
@@ -240,17 +243,23 @@ struct command_param_timeout {
 	time_t timeout;
 };
 
+struct command_param_internal {
+	time_t timeout;
+	int context_type;
+};
+
 union command_param {
 	struct command_param_set set;
 	struct command_param_send send;
-	struct command_param_timeout timeout;
+	struct command_param_internal internal;
 };
 
 struct command {
 	STAILQ_ENTRY(command) entries;
 	struct command_def def;
+	time_t timeout;
 	union command_param param;
-	char buf[1024];
+	char buf[4196];
 	size_t buf_len;
 	enum cmd_state state;
 };
@@ -259,8 +268,7 @@ struct command {
 struct cmd_queue_head *init_cmd_queue();
 
 struct command *make_cmd(char *token, size_t token_len,
-		char *param, size_t param_len,
-		char *port, size_t port_len,
+		union  command_param *param,
 		time_t timeout_in_sec,
 		enum cmd_group group);
 
@@ -271,6 +279,4 @@ void set_active_cmd_uart_buf(struct cmd_queue_head *cmdq_head, char *buf, size_t
 void clear_uart_buf(size_t *buflen);
 
 void free_cmd_queue(struct cmd_queue_head *cmdq_head);
-
-void store_firmware_context(enum cmd_type cmd_type);
 #endif

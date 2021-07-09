@@ -25,7 +25,7 @@ struct push_callbacks push_cb = {
 
 int push_write(struct push_client *client, char *buf, size_t len)
 {
-	int wlen;
+	size_t wlen;
 	wlen = write(client->fd, buf, len);
 	if (wlen < len) {
 		log(LOG_INFO, "short write, not all data echoed back to push client.\n");

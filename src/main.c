@@ -44,6 +44,8 @@ int parse_opts(struct lrwanatd *lw, int argc, char **argv)
 			case '?':
 				log(LOG_INFO, "unknown option: %c", optopt);
 				break;
+			default:
+				break;
 		}
 	}
 
@@ -98,7 +100,6 @@ int init(struct lrwanatd *lw, int argc, char **argv)
 	} else
 		log(LOG_INFO, "push socket opened successfully port 6666.");
 
-    context_manager_init(&lw->ctx_mngr);
 
 	if (init_regex(lw) == RETURN_ERROR)
 		return RETURN_ERROR;
@@ -133,9 +134,10 @@ void clean(struct lrwanatd *lw)
 
 	free(lw->http.http_clientq_head);
 	free(lw->push.push_clientq_head);
-	free(lw);
 
 	regfree(&lw->regex.recv);
+
+	free(lw);
 }
 
 void sigint_handler(int signum)
@@ -169,6 +171,8 @@ int main(int argc, char **argv)
 	setup_uart_events(global_lw);
 	setup_http_events(global_lw);
 	setup_push_events(global_lw);
+
+	context_manager_init(&global_lw->ctx_mngr);
 
 	event_base_dispatch(global_lw->event.base);
 

@@ -23,6 +23,7 @@ char * construct_get_cmd(struct command *cmd);
 char * construct_set_cmd(struct command *cmd);
 char * construct_send_cmd(struct command *cmd);
 char * construct_join_cmd(struct command *cmd);
+char * construct_context_restore_cmd(struct command *cmd);
 
 /* Process the rx function defs */
 enum cmd_res_code wait_for_ok(struct command *cmd);
@@ -46,7 +47,8 @@ char * set_cfm_cmd(struct command *cmd);
 char *response[] = {
 	"\r\nOK\r\n",
 	"\r\nAT_PARAM_ERROR\r\n",
-	"\r\nAT_ERROR\r\n"
+	"\r\nAT_ERROR\r\n",
+	"\r\nAT_NO_NETWORK_JOINED\r\n"
 };
 
 struct command_def cmd_def_list[] = {
@@ -570,6 +572,28 @@ struct command_def cmd_def_list[] = {
 		.get_cmd = NULL,
 		.process_cmd = NULL,
 		.async_cmd = async_has_more_tx,
+	},
+	{
+		.type = CMD_ACQUIRE_CONTEXT,
+		.group = CMD_INTERNAL,
+		.token = TOKEN_AT_CTX_ACQ,
+		.token_len = sizeof(TOKEN_AT_CTX_ACQ) - 1,
+		.cmd = AT_CMD_CTX,
+		.cmd_len = sizeof(AT_CMD_CTX) - 1,
+		.get_cmd = construct_get_cmd,
+		.process_cmd = wait_for_ok_or_timeout,
+		.async_cmd = NULL,
+	},
+	{
+		.type = CMD_RESTORE_CONTEXT,
+		.group = CMD_INTERNAL,
+		.token = TOKEN_AT_CTX_RES,
+		.token_len = sizeof(TOKEN_AT_CTX_ACQ) - 1,
+		.cmd = AT_CMD,
+		.cmd_len = sizeof(AT_CMD) - 1,
+		.get_cmd = construct_context_restore_cmd,
+		.process_cmd = wait_for_ok_or_timeout,
+		.async_cmd = NULL,
 	}
 };
 
@@ -665,9 +689,8 @@ char * construct_set_cmd(struct command *cmd)
 
 char * construct_send_cmd(struct command *cmd)
 {
-	const char *eqstr, *sepstr;
-	char *buf, *strptr;
-	size_t buflen, eqstrlen, sepstrlen;
+	char *buf;
+	size_t buflen;
 	/* AT+SEND=[port]:[confirmation_mode]:[data] */
 
 	buflen = cmd->def.cmd_len /* AT+SEND/B */ +
@@ -675,17 +698,7 @@ char * construct_send_cmd(struct command *cmd)
 		cmd->param.send.port_len /* [port] */+
 		3 /* :[cfm]: */ +
 		cmd->param.send.param_len /* [data] */;
-    /*
-	eqstr = "=";
-	eqstrlen = strlen(eqstr);
-	sepstr = ":";
-	sepstrlen = strlen(sepstr);
 
-
-	buflen = cmd->def.cmd_len + eqstrlen +
-		cmd->param.send.port_len + sepstrlen +
-		cmd->param.send.param_len + 2;
-    */
 	buf = malloc(buflen + 4);
 
 	sprintf(buf, "%.*s=%.*s:%u:%.*s",
@@ -698,6 +711,28 @@ char * construct_send_cmd(struct command *cmd)
 	return buf;
 }
 
+char * construct_context_restore_cmd(struct command *cmd)
+{
+	char *buf;
+	size_t buflen;
+	int type;
+	/* AT[+CTX=0:aabbcc] */
+
+	type = cmd->param.internal.context_type;
+
+	buflen = cmd->def.cmd_len /* AT */ +
+			global_lw->ctx_mngr.lwan_ctx->ctx_len[type];
+
+	buf = malloc(buflen + 1);
+	sprintf(buf, "%.*s%.*s",
+			(int)cmd->def.cmd_len, cmd->def.cmd,
+			(int)global_lw->ctx_mngr.lwan_ctx->ctx_len[type],
+			global_lw->ctx_mngr.lwan_ctx->ctx[type]);
+	buf[buflen] = '\0';
+	return buf;
+}
+
+/* These commands are not executed in the uart hardware, check local member of command */
 char * get_njm_cmd(struct command *cmd)
 {
 	char *result;
@@ -764,7 +799,7 @@ char * set_cfm_cmd(struct command *cmd)
     return result;
 }
 
-bool cmp_last_few_chars(char *buf, size_t buflen, const char *str)
+bool is_buffer_contains(char *buf, size_t buflen, const char *str)
 {
 	/*char *spos;
 	size_t str_len;
@@ -789,7 +824,7 @@ enum cmd_res_code wait_for_ok(struct command *cmd)
 	resplen = sizeof(response)/sizeof(response[0]);
 
 	for (i = 0; i < resplen; i++) {
-		if (!cmp_last_few_chars(cmd->buf, cmd->buf_len, response[i]))
+		if (!is_buffer_contains(cmd->buf, cmd->buf_len, response[i]))
 			return CMD_RES_OK;
 	}
 	return CMD_RES_WAITING;
@@ -798,7 +833,7 @@ enum cmd_res_code wait_for_ok(struct command *cmd)
 enum cmd_res_code wait_for_timeout(struct command *cmd)
 {
 	time_t now = time(NULL);
-	if (cmd->param.timeout.timeout <= now) {
+	if (cmd->timeout <= now) {
 		log(LOG_INFO, "command %p timed out.", cmd);
 		return CMD_RES_TIMEOUT;
 	}
@@ -815,7 +850,7 @@ enum cmd_res_code wait_for_ok_or_timeout(struct command *cmd)
 
 enum cmd_res_code wait_for_joined_or_timeout(struct command *cmd)
 {
-	if (!cmp_last_few_chars(cmd->buf, cmd->buf_len, JOINED_RESPONSE))
+	if (!is_buffer_contains(cmd->buf, cmd->buf_len, JOINED_RESPONSE))
 		return CMD_RES_OK;
 
 	return wait_for_timeout(cmd);
@@ -826,7 +861,7 @@ struct {
 	size_t start;
 	size_t end;
 	bool found;
-} _async_rx_context;
+} async_rx_context;
 
 
 void remove_buf_substr(struct lrwanatd *lw, size_t so, size_t eo)
@@ -865,8 +900,8 @@ void async_recv(struct lrwanatd *lw, char *buf, size_t buflen)
 		}
 		lw->push.cb->recv(lw, msgbuf, strlen(msgbuf));
 		remove_buf_substr(lw, match[0].rm_so, match[0].rm_eo);
-        
-		store_firmware_context(CMD_ASYNC_RECV);
+
+		context_manager_event(CMD_ASYNC_RECV, NULL);
 	}
 	else if (ret != REG_NOMATCH) {
 		// error, because its neither 0 nor REG_NOMATCH
@@ -916,7 +951,7 @@ void async_recv(struct lrwanatd *lw, char *buf, size_t buflen)
 void async_has_more_tx(struct lrwanatd *lw, char *buf, size_t buflen)
 {
 	char  *str = "Network Server is asking for an uplink transmission\n\r";
-	if (!cmp_last_few_chars(buf, buflen, str)) {
+	if (!is_buffer_contains(buf, buflen, str)) {
 		lw->push.cb->more_tx(lw, NULL, 0); /* Yay, a successful match, push it out */
 		// clean it?
 	}
@@ -930,8 +965,7 @@ struct cmd_queue_head *init_cmd_queue()
 }
 
 struct command *make_cmd(char *token, size_t token_len,
-		char *param, size_t param_len,
-		char *port, size_t port_len,
+		union command_param *param,
 		time_t timeout_in_sec,
 		enum cmd_group group)
 {
@@ -951,24 +985,12 @@ struct command *make_cmd(char *token, size_t token_len,
 			cmd->def = *def;
 			cmd->buf_len = 0;
 			cmd->state = CMD_NEW;
-
-			switch (group) {
-				case CMD_SET:
-					cmd->param.set.param = param;
-					cmd->param.set.param_len = param_len;
-					break;
-				case CMD_SEND:
-					cmd->param.send.param = param;
-					cmd->param.send.param_len = param_len;
-					cmd->param.send.port = port;
-					cmd->param.send.port_len = port_len;
-					break;
-			};
-
+			if (param)
+				cmd->param = *param;
 			if (timeout_in_sec)
-				cmd->param.timeout.timeout = time(NULL) + timeout_in_sec;
+				cmd->timeout = time(NULL) + timeout_in_sec;
 			else /* use default timeout */
-				cmd->param.timeout.timeout = time(NULL) + DEFAULT_TIMEOUT;
+				cmd->timeout = time(NULL) + DEFAULT_TIMEOUT;
 
 			break;
 		}
@@ -1029,11 +1051,6 @@ void free_cmd_queue(struct cmd_queue_head *cmdq_head)
 void clear_uart_buf(size_t *buflen)
 {
 	*buflen = 0;
-	_async_rx_context.found = false;
-	_async_rx_context.start = _async_rx_context.end = 0;
-}
-
-
-void store_firmware_context(enum cmd_type cmd_type)
-{
+	async_rx_context.found = false;
+	async_rx_context.start = async_rx_context.end = 0;
 }

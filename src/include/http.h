@@ -50,6 +50,7 @@ struct http_client {
 	bool is_json;
 	bool timed_out;
 	char error_resp[255];
+	bool local; /* True if client in an internal client */
 };
 
 struct http_client_queue_head *init_http_client_queue();
@@ -66,4 +67,7 @@ void process_http_clients(struct lrwanatd *lw);
 
 void remove_disconnected_http_clients(struct lrwanatd *lw);
 
+struct http_client * create_http_client(struct lrwanatd *lw, int fd);
+
+void free_http_client(struct lrwanatd *lw, struct http_client *client);
 #endif

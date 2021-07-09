@@ -3,22 +3,28 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define CONTEXT_FILE "lwan_context.bin"
+
 struct lwan_context {
-    uint8_t network_join_mode;
-    uint8_t confirmation_mode;
-    /* lora firmware data */
-    size_t ctx_len[6];
-    char ctx[6][1024];
+	uint8_t network_join_mode;
+	uint8_t confirmation_mode;
+	/* lora firmware data */
+	size_t ctx_len[7];
+	char ctx[7][1024];
 };
 
 struct context_manager {
-    struct http_client * client;
-    char filename[255];
-    int fd;
-    struct lwan_context *lwan_ctx;
+	struct http_client * client;
+	int send_recv_cntr;
+	char filename[255];
+	int fd;
+	struct lwan_context *lwan_ctx;
 };
 
+enum cmd_type;
+struct command;
+
 void context_manager_init(struct context_manager *ctx_mngr);
-struct lwan_context * get_lwan_ctx();
+void context_manager_event(enum cmd_type cmd_type, struct command *cmd);
 
 #endif /* __CONTEXT_MANAGER_H__ */
