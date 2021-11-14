@@ -145,11 +145,11 @@ int add_cmd(struct http_client *client)
 	switch(client->action) {
 		case HTTP_RESET:
 			cmd = make_cmd(TOKEN_AT_RESET, sizeof(TOKEN_AT_RESET) - 1,
-					NULL, 5, CMD_ACTION);
+					NULL, 10, CMD_ACTION);
 			break;
 		case HTTP_HARD_RESET:
 			cmd = make_cmd(TOKEN_AT_HARD_RESET, sizeof(TOKEN_AT_HARD_RESET) - 1,
-						   NULL, 5, CMD_ACTION);
+						   NULL, 10, CMD_ACTION);
 			break;
 		case HTTP_STATUS:
 			cmd = make_cmd(TOKEN_AT, sizeof(TOKEN_AT) - 1,
@@ -524,7 +524,8 @@ void process_http_clients(struct lrwanatd *lw)
 							/* Clear the global buffer */
 							clear_uart_buf(&(lw->uart.buf_len));
 							/* Signal for store */
-							context_manager_event(cmd->def.type, cmd);
+							if (!client->timed_out)
+								context_manager_event(cmd->def.type, cmd);
 							break;
 						default:
 							break;

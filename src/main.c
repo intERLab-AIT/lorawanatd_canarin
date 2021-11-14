@@ -24,11 +24,15 @@ static void log_cb(int priority, const char *msg)
 int parse_opts(struct lrwanatd *lw, int argc, char **argv)
 {
 	int opt;
-	while((opt = getopt(argc, argv, ":f:b:r")) != -1) {
+	while((opt = getopt(argc, argv, ":f:c:b:r")) != -1) {
 		switch(opt) {
 			case 'f':
 				strcpy(lw->uart.file, optarg);
 				log(LOG_INFO, "uart device: %s", lw->uart.file);
+				break;
+			case 'c':
+				strcpy(lw->ctx_mngr.filename, optarg);
+				log(LOG_INFO, "context manager file: %s", lw->ctx_mngr.filename);
 				break;
 			case 'b':
 				lw->uart.baudrate = strtol(optarg, NULL, 10);
@@ -54,6 +58,11 @@ int parse_opts(struct lrwanatd *lw, int argc, char **argv)
 		return RETURN_ERROR;
 	}
 
+	if (!strlen(lw->ctx_mngr.filename)) {
+		log(LOG_INFO, "Invalid context manager filename.");
+		return RETURN_ERROR;
+	}
+
 	if (lw->uart.baudrate < 0) {
 		log(LOG_INFO, "Invalid uart baudrate.");
 		return RETURN_ERROR;
@@ -62,8 +71,9 @@ int parse_opts(struct lrwanatd *lw, int argc, char **argv)
 	return RETURN_OK;
 }
 
-static const char *recv_pattern = "\\+EVT:([0-9]+):([a-f0-9]+)..#FCNTDOWN:([0-9]+)#..\\+EVT:[A-Z0-9]+, RSSI (-?[0-9]+), SNR (-?[0-9]+)..";
+//static const char *recv_pattern = "\\+EVT:([0-9]+):([a-f0-9]+)..#FCNTDOWN:([0-9]+)#..\\+EVT:[A-Z0-9]+, RSSI (-?[0-9]+), SNR (-?[0-9]+)..";
 
+static const char *recv_pattern = "\\+EVT:([0-9]+):[0-9]+:([a-f0-9]+)..\\+EVT:(RX_[0-9]), DR [0-9], RSSI (-?[0-9]+), SNR (-?[0-9]+)..";
 int init_regex(struct lrwanatd *lw)
 {
 	if (regcomp(&lw->regex.recv, recv_pattern, REG_EXTENDED)) {

@@ -16,6 +16,7 @@
 #define RX_NEWLINE 		"\r\n"
 
 #define JOINED_RESPONSE "+EVT:JOINED\r\n"
+#define JOIN_FAILED_RESPONSE "+EVT:JOIN FAILED\r\n"
 
 /* Construct the cmds function defs */
 char * construct_raw_cmd(struct command *cmd);
@@ -24,6 +25,8 @@ char * construct_set_cmd(struct command *cmd);
 char * construct_send_cmd(struct command *cmd);
 char * construct_join_cmd(struct command *cmd);
 char * construct_context_restore_cmd(struct command *cmd);
+char * construct_mac_param_cmd(struct command *cmd);
+char * construct_delay_cmd(struct command *cmd);
 
 /* Process the rx function defs */
 enum cmd_res_code wait_for_ok(struct command *cmd);
@@ -35,7 +38,6 @@ enum cmd_res_code wait_for_ok_or_timeout(struct command *cmd);
 /* Async response processors */
 void async_recv(struct lrwanatd *lw, char *buf, size_t buflen);
 void async_has_more_tx(struct lrwanatd *lw, char *buf, size_t buflen);
-
 
 /* Local commands */
 char * get_njm_cmd(struct command *cmd);
@@ -49,8 +51,11 @@ char *response[] = {
 	"\r\nOK\r\n",
 	"\r\nAT_PARAM_ERROR\r\n",
 	"\r\nAT_ERROR\r\n",
+	"\r\nAT_BUSY_ERROR\r\n",
 	"\r\nAT_NO_NETWORK_JOINED\r\n"
 };
+
+char *delay_msg = "\r\n\r\n";
 
 struct command_def cmd_def_list[] = {
 	{
@@ -60,7 +65,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_RESET) - 1,
 		.cmd = AT_CMD_RESET,
 		.cmd_len = sizeof(AT_CMD_RESET) - 1,
-		.get_cmd = construct_raw_cmd,
+		.construct_cmd = construct_raw_cmd,
 		.process_cmd = wait_for_good_timeout,
 		.async_cmd = NULL,
 	},
@@ -71,7 +76,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_HARD_RESET) - 1,
 		.cmd = AT_CMD_RESET,
 		.cmd_len = sizeof(AT_CMD_RESET) - 1,
-		.get_cmd = construct_raw_cmd,
+		.construct_cmd = construct_raw_cmd,
 		.process_cmd = wait_for_good_timeout,
 		.async_cmd = NULL,
 	},
@@ -82,7 +87,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT) - 1,
 		.cmd = AT_CMD,
 		.cmd_len = sizeof(AT_CMD) - 1,
-		.get_cmd = construct_raw_cmd,
+		.construct_cmd = construct_raw_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -93,7 +98,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_JOIN) - 1,
 		.cmd = AT_CMD_JOIN,
 		.cmd_len = sizeof(AT_CMD_JOIN) - 1,
-		.get_cmd = construct_join_cmd,
+		.construct_cmd = construct_join_cmd,
 		.process_cmd = wait_for_joined_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -104,7 +109,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_DEUI) - 1,
 		.cmd = AT_CMD_DEUI,
 		.cmd_len = sizeof(AT_CMD_DEUI) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -115,7 +120,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_DADDR) - 1,
 		.cmd = AT_CMD_DADDR,
 		.cmd_len = sizeof(AT_CMD_DADDR) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -126,7 +131,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_APPKEY) - 1,
 		.cmd = AT_CMD_APPKEY,
 		.cmd_len = sizeof(AT_CMD_APPKEY) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -137,7 +142,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_APPEUI) - 1,
 		.cmd = AT_CMD_APPEUI,
 		.cmd_len = sizeof(AT_CMD_APPEUI) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -148,7 +153,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_ADR) - 1,
 		.cmd = AT_CMD_ADR,
 		.cmd_len = sizeof(AT_CMD_ADR) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -159,7 +164,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_TXP) - 1,
 		.cmd = AT_CMD_TXP,
 		.cmd_len = sizeof(AT_CMD_TXP) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -170,7 +175,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_DR) - 1,
 		.cmd = AT_CMD_DR,
 		.cmd_len = sizeof(AT_CMD_DR) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -181,7 +186,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_RX2FQ) - 1,
 		.cmd = AT_CMD_RX2FQ,
 		.cmd_len = sizeof(AT_CMD_RX2FQ) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -192,7 +197,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_RX2DR) - 1,
 		.cmd = AT_CMD_RX2DR,
 		.cmd_len = sizeof(AT_CMD_RX2DR) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -203,7 +208,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_RX1DL) - 1,
 		.cmd = AT_CMD_RX1DL,
 		.cmd_len = sizeof(AT_CMD_RX1DL) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -214,7 +219,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_RX2DL) - 1,
 		.cmd = AT_CMD_RX2DL,
 		.cmd_len = sizeof(AT_CMD_RX2DL) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -225,7 +230,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_JN1DL) - 1,
 		.cmd = AT_CMD_JN1DL,
 		.cmd_len = sizeof(AT_CMD_JN1DL) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -236,7 +241,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_JN2DL) - 1,
 		.cmd = AT_CMD_JN2DL,
 		.cmd_len = sizeof(AT_CMD_JN2DL) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -247,7 +252,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_NJM) - 1,
 		.cmd = AT_CMD_NJM,
 		.cmd_len = sizeof(AT_CMD_NJM) - 1,
-		.get_cmd = get_njm_cmd,
+		.construct_cmd = get_njm_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 		.local_state = true,
@@ -259,7 +264,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_NWKID) - 1,
 		.cmd = AT_CMD_NWKID,
 		.cmd_len = sizeof(AT_CMD_NWKID) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -270,7 +275,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_CLASS) - 1,
 		.cmd = AT_CMD_CLASS,
 		.cmd_len = sizeof(AT_CMD_CLASS) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -281,7 +286,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_NJS) - 1,
 		.cmd = AT_CMD_NJS,
 		.cmd_len = sizeof(AT_CMD_NJS) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -292,7 +297,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_CFM) - 1,
 		.cmd = AT_CMD_CFM,
 		.cmd_len = sizeof(AT_CMD_CFM) - 1,
-		.get_cmd = get_cfm_cmd,
+		.construct_cmd = get_cfm_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 		.local_state = true,
@@ -304,7 +309,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_CFS) - 1,
 		.cmd = AT_CMD_CFS,
 		.cmd_len = sizeof(AT_CMD_CFS) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -315,7 +320,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_SNR) - 1,
 		.cmd = AT_CMD_SNR,
 		.cmd_len = sizeof(AT_CMD_SNR) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -326,7 +331,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_RSSI) - 1,
 		.cmd = AT_CMD_RSSI,
 		.cmd_len = sizeof(AT_CMD_RSSI) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -337,7 +342,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_DADDR) - 1,
 		.cmd = AT_CMD_DADDR,
 		.cmd_len = sizeof(AT_CMD_DADDR) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_set_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -348,7 +353,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_APPKEY) - 1,
 		.cmd = AT_CMD_APPKEY,
 		.cmd_len = sizeof(AT_CMD_APPKEY) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_set_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -359,7 +364,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_NWKSKEY) - 1,
 		.cmd = AT_CMD_NWKSKEY,
 		.cmd_len = sizeof(AT_CMD_NWKSKEY) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_set_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -370,7 +375,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_APPSKEY) - 1,
 		.cmd = AT_CMD_APPSKEY,
 		.cmd_len = sizeof(AT_CMD_APPSKEY) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_set_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -381,7 +386,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_APPEUI) - 1,
 		.cmd = AT_CMD_APPEUI,
 		.cmd_len = sizeof(AT_CMD_APPEUI) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_set_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -392,7 +397,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_ADR) - 1,
 		.cmd = AT_CMD_ADR,
 		.cmd_len = sizeof(AT_CMD_ADR) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_set_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -403,9 +408,10 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_TXP) - 1,
 		.cmd = AT_CMD_TXP,
 		.cmd_len = sizeof(AT_CMD_TXP) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_mac_param_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
+		.local_state = true,
 	},
 	{
 		.type = CMD_SET_DR,
@@ -414,9 +420,10 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_DR) - 1,
 		.cmd = AT_CMD_DR,
 		.cmd_len = sizeof(AT_CMD_DR) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_mac_param_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
+		.local_state = true,
 	},
 	{
 		.type = CMD_SET_RX2FQ,
@@ -425,7 +432,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_RX2FQ) - 1,
 		.cmd = AT_CMD_RX2FQ,
 		.cmd_len = sizeof(AT_CMD_RX2FQ) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_set_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -436,9 +443,10 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_RX2DR) - 1,
 		.cmd = AT_CMD_RX2DR,
 		.cmd_len = sizeof(AT_CMD_RX2DR) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_mac_param_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
+		.local_state = true,
 	},
 	{
 		.type = CMD_SET_RX1DL,
@@ -447,9 +455,10 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_RX1DL) - 1,
 		.cmd = AT_CMD_RX1DL,
 		.cmd_len = sizeof(AT_CMD_RX1DL) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_mac_param_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
+		.local_state = true,
 	},
 	{
 		.type = CMD_SET_RX2DL,
@@ -458,9 +467,10 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_RX2DL) - 1,
 		.cmd = AT_CMD_RX2DL,
 		.cmd_len = sizeof(AT_CMD_RX2DL) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_mac_param_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
+		.local_state = true,
 	},
 	{
 		.type = CMD_SET_JN1DL,
@@ -469,7 +479,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_JN1DL) - 1,
 		.cmd = AT_CMD_JN1DL,
 		.cmd_len = sizeof(AT_CMD_JN1DL) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_set_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -480,7 +490,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_JN2DL) - 1,
 		.cmd = AT_CMD_JN2DL,
 		.cmd_len = sizeof(AT_CMD_JN2DL) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_set_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -491,7 +501,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_NJM) - 1,
 		.cmd = AT_CMD_NJM,
 		.cmd_len = sizeof(AT_CMD_NJM) - 1,
-		.get_cmd = set_njm_cmd,
+		.construct_cmd = set_njm_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 		.local_state = true,
@@ -503,7 +513,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_NWKID) - 1,
 		.cmd = AT_CMD_NWKID,
 		.cmd_len = sizeof(AT_CMD_NWKID) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_set_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -514,7 +524,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_CLASS) - 1,
 		.cmd = AT_CMD_CLASS,
 		.cmd_len = sizeof(AT_CMD_CLASS) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_set_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -525,7 +535,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_CFM) - 1,
 		.cmd = AT_CMD_CFM,
 		.cmd_len = sizeof(AT_CMD_CFM) - 1,
-		.get_cmd = set_cfm_cmd,
+		.construct_cmd = set_cfm_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 		.local_state = true,
@@ -537,7 +547,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_FCNT) - 1,
 		.cmd = AT_CMD_FCNT,
 		.cmd_len = sizeof(AT_CMD_FCNT) - 1,
-		.get_cmd = construct_set_cmd,
+		.construct_cmd = construct_set_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -548,7 +558,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_SEND) - 1,
 		.cmd = AT_CMD_SEND,
 		.cmd_len = sizeof(AT_CMD_SEND) - 1,
-		.get_cmd = construct_send_cmd,
+		.construct_cmd = construct_send_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -559,7 +569,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_SENDB) - 1,
 		.cmd = AT_CMD_SENDB,
 		.cmd_len = sizeof(AT_CMD_SENDB) - 1,
-		.get_cmd = construct_send_cmd,
+		.construct_cmd = construct_send_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -570,7 +580,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = 0,
 		.cmd = NULL,
 		.cmd_len = 0,
-		.get_cmd = NULL,
+		.construct_cmd = NULL,
 		.process_cmd = NULL,
 		.async_cmd = async_recv,
 	},
@@ -581,7 +591,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = 0,
 		.cmd = NULL,
 		.cmd_len = 0,
-		.get_cmd = NULL,
+		.construct_cmd = NULL,
 		.process_cmd = NULL,
 		.async_cmd = async_has_more_tx,
 	},
@@ -592,7 +602,7 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_CTX_ACQ) - 1,
 		.cmd = AT_CMD_CTX,
 		.cmd_len = sizeof(AT_CMD_CTX) - 1,
-		.get_cmd = construct_get_cmd,
+		.construct_cmd = construct_get_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
 	},
@@ -603,12 +613,29 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_CTX_ACQ) - 1,
 		.cmd = AT_CMD,
 		.cmd_len = sizeof(AT_CMD) - 1,
-		.get_cmd = construct_context_restore_cmd,
+		.construct_cmd = construct_context_restore_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
-	}
+	},
+	{
+		.type = CMD_DELAY,
+		.group = CMD_INTERNAL,
+		.token = TOKEN_AT_DELAY,
+		.token_len = sizeof(TOKEN_AT_DELAY) - 1,
+		.cmd = AT_CMD_DELAY,
+		.cmd_len = sizeof(AT_CMD_DELAY) - 1,
+		.construct_cmd = construct_delay_cmd,
+		.process_cmd = wait_for_good_timeout,
+		.async_cmd = NULL,
+		.local_state = true,
+	},
 };
 
+
+time_t get_epoc_timeout(struct command *cmd)
+{
+	return cmd->timeout + time(NULL);
+}
 
 char *construct_raw_cmd(struct command *cmd)
 {
@@ -626,6 +653,8 @@ char *construct_raw_cmd(struct command *cmd)
 
 	*strptr = '\0';
 
+	cmd->epoc_timeout = get_epoc_timeout(cmd);
+
 	return buf;
 }
 
@@ -639,8 +668,10 @@ char *construct_join_cmd(struct command *cmd)
 	buf = malloc(buflen + 1);
 
 	sprintf(buf, "%.*s=%u", (int)cmd->def.cmd_len, cmd->def.cmd,
-            global_lw->ctx_mngr.lwan_ctx->network_join_mode);
+            global_lw->ctx_mngr.lwan_ctx->mac_params.network_join_mode);
 	buf[buflen] = '\0';
+
+	cmd->epoc_timeout = get_epoc_timeout(cmd);
 
 	return buf;
 }
@@ -667,6 +698,9 @@ char * construct_get_cmd(struct command *cmd)
 	strptr += postfixlen;
 
 	*strptr = '\0';
+
+	cmd->epoc_timeout = get_epoc_timeout(cmd);
+
 	return buf;
 }
 
@@ -696,6 +730,9 @@ char * construct_set_cmd(struct command *cmd)
 	strptr += cmd->param.set.param_len;
 
 	*strptr = '\0';
+
+	cmd->epoc_timeout = get_epoc_timeout(cmd);
+
 	return buf;
 }
 
@@ -716,10 +753,13 @@ char * construct_send_cmd(struct command *cmd)
 	sprintf(buf, "%.*s=%.*s:%u:%.*s",
 		(int)cmd->def.cmd_len, cmd->def.cmd,
 		(int)cmd->param.send.port_len, cmd->param.send.port,
-		global_lw->ctx_mngr.lwan_ctx->confirmation_mode,
+		global_lw->ctx_mngr.lwan_ctx->mac_params.confirmation_mode,
 		(int)cmd->param.send.param_len + 1, cmd->param.send.param);
 			   
 	buf[buflen] = '\0';
+
+	cmd->epoc_timeout = get_epoc_timeout(cmd);
+
 	return buf;
 }
 
@@ -741,16 +781,24 @@ char * construct_context_restore_cmd(struct command *cmd)
 			(int)global_lw->ctx_mngr.lwan_ctx->ctx_len[type],
 			global_lw->ctx_mngr.lwan_ctx->ctx[type]);
 	buf[buflen] = '\0';
+
+	cmd->epoc_timeout = get_epoc_timeout(cmd);
+
 	return buf;
 }
 
+
 /* These commands are not executed in the uart hardware, check local member of command */
+
 char * get_njm_cmd(struct command *cmd)
 {
 	char *result;
 	result = malloc(16);
 	sprintf(result, "%u\r\nOK\r\n",
-            global_lw->ctx_mngr.lwan_ctx->network_join_mode);
+            global_lw->ctx_mngr.lwan_ctx->mac_params.network_join_mode);
+
+	cmd->epoc_timeout = get_epoc_timeout(cmd);
+
 	return result;
 }
 
@@ -759,7 +807,22 @@ char * get_cfm_cmd(struct command *cmd)
 	char *result;
 	result = malloc(16);
 	sprintf(result, "%u\r\nOK\r\n",
-            global_lw->ctx_mngr.lwan_ctx->confirmation_mode);
+            global_lw->ctx_mngr.lwan_ctx->mac_params.confirmation_mode);
+
+	cmd->epoc_timeout = get_epoc_timeout(cmd);
+
+	return result;
+}
+
+char * get_mac_param_cmd(struct command *cmd)
+{
+	char *result;
+	result = malloc(16);
+	sprintf(result, "%u\r\nOK\r\n",
+			global_lw->ctx_mngr.lwan_ctx->mac_params.network_join_mode);
+
+	cmd->epoc_timeout = get_epoc_timeout(cmd);
+
 	return result;
 }
 
@@ -774,15 +837,17 @@ char * set_njm_cmd(struct command *cmd)
 
 	code = strtol(cmd->param.set.param, NULL, 10);
 	if (code < 0 || code > 1) {
-		result = response[2];
+		result = response[1];
 	}
 	else {
-		global_lw->ctx_mngr.lwan_ctx->network_join_mode = code;
+		global_lw->ctx_mngr.lwan_ctx->mac_params.network_join_mode = code;
 		result = response[0];
 	}
 
 	log(LOG_INFO, "network join mode = %u",
-        global_lw->ctx_mngr.lwan_ctx->network_join_mode);
+        global_lw->ctx_mngr.lwan_ctx->mac_params.network_join_mode);
+
+	cmd->epoc_timeout = get_epoc_timeout(cmd);
 
 	return result;
 }
@@ -799,16 +864,104 @@ char * set_cfm_cmd(struct command *cmd)
 
 	code = strtol(cmd->param.set.param, NULL, 10);
 	if (code < 0 || code > 1) {
-        result = response[2];
+        result = response[1];
 	}
 	else {
-		global_lw->ctx_mngr.lwan_ctx->confirmation_mode = code;
+		global_lw->ctx_mngr.lwan_ctx->mac_params.confirmation_mode = code;
         result = response[0];
 	}
 
 	log(LOG_INFO, "confirmation mode = %u",
-        global_lw->ctx_mngr.lwan_ctx->confirmation_mode);
+        global_lw->ctx_mngr.lwan_ctx->mac_params.confirmation_mode);
+
+	cmd->epoc_timeout = get_epoc_timeout(cmd);
+
     return result;
+}
+
+
+char * construct_mac_param_cmd(struct command *cmd)
+{
+
+	char *result;
+	struct lrwanatd *lw = global_lw;
+	uint32_t code;
+
+	/* If we have forced this to write to hardware uart, then call the uart code */
+	if (!cmd->def.local_state) {
+		return construct_set_cmd(cmd);
+	}
+
+	errno = 0;
+	code = strtol(cmd->param.set.param, NULL, 10);
+
+	if (errno != 0 ) {
+		log(LOG_ERR, "%s", strerror(errno));
+		result = response[1];
+		return result;
+	}
+
+	switch (cmd->def.type) {
+		case CMD_SET_DR:
+			if (code < 0 || code > 7) {
+				result = response[1];
+			}
+			else {
+				lw->ctx_mngr.lwan_ctx->mac_params.dirty |= MAC_PARAM_BIT(MAC_PARAM_DATA_RATE);
+				lw->ctx_mngr.lwan_ctx->mac_params.params[MAC_PARAM_DATA_RATE] = code;
+				result = response[0];
+				log(LOG_INFO, "Data Rate Set: %u", code);
+			}
+			break;
+		case CMD_SET_TXP:
+			if (code < 0 || code > 5) {
+				result = response[1];
+			}
+			else {
+				lw->ctx_mngr.lwan_ctx->mac_params.dirty |= MAC_PARAM_BIT(MAC_PARAM_TRANSMIT_POWER);
+				lw->ctx_mngr.lwan_ctx->mac_params.params[MAC_PARAM_TRANSMIT_POWER] = code;
+				result = response[0];
+				log(LOG_INFO, "Transmit Power Set: %u", code);
+			}
+			break;
+		case CMD_SET_RX1DL:
+			lw->ctx_mngr.lwan_ctx->mac_params.dirty |= MAC_PARAM_BIT(MAC_PARAM_RX1_DELAY);
+			lw->ctx_mngr.lwan_ctx->mac_params.params[MAC_PARAM_RX1_DELAY] = code;
+			result = response[0];
+			log(LOG_INFO, "Rx1 Delay Set: %u", code);
+			break;
+		case CMD_SET_RX2DL:
+			lw->ctx_mngr.lwan_ctx->mac_params.dirty |= MAC_PARAM_BIT(MAC_PARAM_RX2_DELAY);
+			lw->ctx_mngr.lwan_ctx->mac_params.params[MAC_PARAM_RX2_DELAY] = code;
+			result = response[0];
+			log(LOG_INFO, "Rx2 Delay Set: %u", code);
+			break;
+		case CMD_SET_RX2DR:
+			if (code < 0 || code > 7) {
+				result = response[1];
+			}
+			else {
+				lw->ctx_mngr.lwan_ctx->mac_params.dirty |= MAC_PARAM_BIT(MAC_PARAM_RX2_DATA_RATE);
+				lw->ctx_mngr.lwan_ctx->mac_params.params[MAC_PARAM_RX2_DATA_RATE] = code;
+				result = response[0];
+				log(LOG_INFO, "Rx2 Data Rate Set: %u", code);
+			}
+			break;
+	}
+
+	cmd->epoc_timeout = get_epoc_timeout(cmd);
+
+	return result;
+}
+
+char * construct_delay_cmd(struct command *cmd)
+{
+	/* wait_for_good_timeout */
+	log(LOG_INFO, "Internal Delay  %u", cmd->timeout);
+
+	cmd->epoc_timeout = get_epoc_timeout(cmd);
+
+	return delay_msg;
 }
 
 bool is_buffer_contains(char *buf, size_t buflen, const char *str)
@@ -845,7 +998,7 @@ enum cmd_res_code wait_for_ok(struct command *cmd)
 enum cmd_res_code wait_for_timeout(struct command *cmd)
 {
 	time_t now = time(NULL);
-	if (cmd->timeout <= now) {
+	if (cmd->epoc_timeout <= now) {
 		log(LOG_INFO, "command %p timed out.", cmd);
 		return CMD_RES_TIMEOUT;
 	}
@@ -854,9 +1007,9 @@ enum cmd_res_code wait_for_timeout(struct command *cmd)
 
 enum cmd_res_code wait_for_good_timeout(struct command *cmd)
 {
-	/* sometimes a timeout is okay :D */
+	/* sometimes a epoc_timeout is okay :D */
 	time_t now = time(NULL);
-	if (cmd->timeout <= now) {
+	if (cmd->epoc_timeout <= now) {
 		log(LOG_INFO, "command %p timed out.", cmd);
 		return CMD_RES_OK;
 	}
@@ -875,6 +1028,8 @@ enum cmd_res_code wait_for_joined_or_timeout(struct command *cmd)
 {
 	if (!is_buffer_contains(cmd->buf, cmd->buf_len, JOINED_RESPONSE))
 		return CMD_RES_OK;
+	else if (!is_buffer_contains(cmd->buf, cmd->buf_len, JOIN_FAILED_RESPONSE))
+		return CMD_RES_TIMEOUT; // notify failure as epoc_timeout.
 
 	return wait_for_timeout(cmd);
 }
@@ -909,6 +1064,7 @@ void async_recv(struct lrwanatd *lw, char *buf, size_t buflen)
 	regmatch_t match[lw->regex.n_recv_grps];
 	// use this buff as msg or error buff depenending on situtation.
 	char msgbuf[255] = { '\0' };
+    // log(LOG_INFO, "%.*s", buflen, buf);
 	ret = regexec(&lw->regex.recv, buf, lw->regex.n_recv_grps, match, 0);
 
 	if (!ret) {
@@ -1010,10 +1166,16 @@ struct command *make_cmd(char *token, size_t token_len,
 			cmd->state = CMD_NEW;
 			if (param)
 				cmd->param = *param;
+#if 0
 			if (timeout_in_sec)
-				cmd->timeout = time(NULL) + timeout_in_sec;
-			else /* use default timeout */
-				cmd->timeout = time(NULL) + DEFAULT_TIMEOUT;
+				cmd->epoc_timeout = time(NULL) + timeout_in_sec;
+			else /* use default epoc_timeout */
+				cmd->epoc_timeout = time(NULL) + DEFAULT_TIMEOUT;
+#endif
+			if (timeout_in_sec)
+				cmd->timeout = timeout_in_sec;
+			else
+				cmd->timeout = DEFAULT_TIMEOUT;
 
 			break;
 		}

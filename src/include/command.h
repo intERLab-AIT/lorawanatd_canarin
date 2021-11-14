@@ -124,9 +124,14 @@
 #define AT_CMD_FCNT "AT+FCNT"
 #define TOKEN_AT_FCNT "frame_counter"
 
+/* Acquire and restore context */
 #define AT_CMD_CTX "AT+CTX"
 #define TOKEN_AT_CTX_ACQ "context_acquire"
 #define TOKEN_AT_CTX_RES "context_restore"
+
+/* Delay the board */
+#define AT_CMD_DELAY "DELAY"
+#define TOKEN_AT_DELAY "delay"
 
 enum cmd_group {
 	CMD_ASYNC, /* Asynchronous events like RECV */
@@ -188,6 +193,7 @@ enum cmd_type {
 	CMD_ASYNC_MORE_TX,
 	CMD_ACQUIRE_CONTEXT,
 	CMD_RESTORE_CONTEXT,
+	CMD_DELAY,
 	CMD_TYPE_MAX,
 };
 
@@ -208,7 +214,7 @@ enum cmd_res_code {
 struct command_def; /* command definition */
 struct command;
 
-typedef char * (*get_cmd_fp)(struct command *);
+typedef char * (*construct_cmd_fp)(struct command *);
 typedef enum cmd_res_code (*process_cmd_fp)(struct command *);
 typedef void (*async_cmd_fp)(struct lrwanatd *lw, char *buf, size_t buflen);
 
@@ -221,7 +227,7 @@ struct command_def {
 	size_t token_len;
 	char *cmd;
 	size_t cmd_len;
-	get_cmd_fp get_cmd;
+	construct_cmd_fp construct_cmd;
 	process_cmd_fp process_cmd;
 	async_cmd_fp async_cmd;
 	bool local_state;
@@ -252,6 +258,7 @@ union command_param {
 struct command {
 	STAILQ_ENTRY(command) entries;
 	struct command_def def;
+	time_t epoc_timeout;
 	time_t timeout;
 	union command_param param;
 	char buf[4196];

@@ -113,7 +113,7 @@ void on_accept_push(evutil_socket_t fd, short what, void *arg)
 	if (set_nonblock_sock(client_fd) < 0)
 		log(LOG_INFO, "push sock non blocking not set.");
 
-	client = malloc(sizeof(struct push_client));
+	client = calloc(sizeof(struct push_client),1);
 	client->fd = client_fd;
 	client->state = PUSH_CLIENT_ACTIVE;
 

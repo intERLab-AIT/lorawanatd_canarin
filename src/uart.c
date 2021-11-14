@@ -158,6 +158,16 @@ int uart_dev_read(evutil_socket_t fd, short what, void *arg)
 	return ret;
 }
 
+void flush_dev_read(evutil_socket_t fd)
+{
+	int ret = 1;
+	char buf[READ_SIZE];
+	while (ret != 0) {
+		ret = read(fd, buf, READ_SIZE);
+	}
+
+}
+
 void uart_dev_write(evutil_socket_t fd, short what, void *arg)
 {
 	struct lrwanatd *lw;
@@ -170,6 +180,8 @@ void uart_dev_write(evutil_socket_t fd, short what, void *arg)
 
 	if (!tx)
 		return;
+
+	flush_dev_read(fd);
 
 	wlen = write(lw->uart.fd, tx->buf, tx->buf_len);
 	tcdrain(lw->uart.fd);
@@ -282,7 +294,7 @@ void process_cmd(evutil_socket_t fd, short what, void *arg)
 			if (cmd) {
 				assert(cmd->state == CMD_NEW);
 
-				buf = cmd->def.get_cmd(cmd);
+				buf = cmd->def.construct_cmd(cmd);
 				buflen = strlen(buf);
 
 				if (cmd->def.local_state) {

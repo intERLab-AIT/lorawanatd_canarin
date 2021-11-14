@@ -5,6 +5,8 @@
 #include "command.h"
 #include "logger.h"
 
+#define CTX_ACQUIRE_COUNT	10
+
 /*
 * Enumeration of modules which have a context
 */
@@ -44,10 +46,13 @@ typedef enum LoRaMacNvmCtxModule_e
 static struct lwan_context lwan_ctx;
 static struct context_manager *this;
 
+static char params_str[MAC_PARAM_MAX][255];
+
+
 void read_context()
 {
 	log(LOG_INFO, "Read context file");
-	FILE *f = fopen(CONTEXT_FILE, "rb");
+	FILE *f = fopen(this->filename, "rb");
 	if (!f) {
 		log(LOG_ERR, "Cannot open context file. %s", strerror(errno));
 		return;
@@ -62,10 +67,11 @@ void read_context()
 	fclose(f);
 }
 
+
 void write_context()
 {
 	log(LOG_INFO, "Write context file");
-	FILE *f = fopen(CONTEXT_FILE, "wb");
+	FILE *f = fopen(this->filename, "wb");
 	if (!f) {
 		log(LOG_ERR, "Cannot open context file. %s", strerror(errno));
 		return;
@@ -78,14 +84,86 @@ void write_context()
 	fclose(f);
 }
 
+
 bool update_cntr()
 {
-	if (++this->send_recv_cntr >= 10) {
+	if (++this->send_recv_cntr >= CTX_ACQUIRE_COUNT) {
 		this->send_recv_cntr = 0;
 		return true;
 	}
 	return false;
 }
+
+void set_mac_params() {
+	struct http_client *client;
+	struct lrwanatd *lw;
+	struct command *cmd;
+	char *token;
+	union command_param param;
+	log(LOG_INFO, "Setting mac params on firmware!\n");
+
+	lw = global_lw;
+	client = create_http_client(lw, 0);
+	client->local = true;
+	this->client = client;
+
+	for (enum mac_pram_type_e param_type = 0; param_type < MAC_PARAM_MAX; param_type++) {
+		uint16_t bit_check = MAC_PARAM_BIT(param_type);
+		bool check = bit_check & lwan_ctx.mac_params.dirty;
+		if (check) {
+			switch (param_type) {
+				case MAC_PARAM_DATA_RATE:
+					token = TOKEN_AT_DR;
+					memset(params_str[param_type], 0, 255);
+					sprintf(params_str[param_type], "%u", lwan_ctx.mac_params.params[param_type]);
+					break;
+				case MAC_PARAM_TRANSMIT_POWER:
+					token = TOKEN_AT_TXP;
+					memset(params_str[param_type], 0, 255);
+					sprintf(params_str[param_type], "%u", lwan_ctx.mac_params.params[param_type]);
+					break;
+				case MAC_PARAM_RX1_DELAY:
+					token = TOKEN_AT_RX1DL;
+					memset(params_str[param_type], 0, 255);
+					sprintf(params_str[param_type], "%u", lwan_ctx.mac_params.params[param_type]);
+					break;
+				case MAC_PARAM_RX2_DELAY:
+					token = TOKEN_AT_RX2DL;
+					memset(params_str[param_type], 0, 255);
+					sprintf(params_str[param_type], "%u", lwan_ctx.mac_params.params[param_type]);
+					break;
+				case MAC_PARAM_RX2_DATA_RATE:
+					token = TOKEN_AT_RX2DR;
+					memset(params_str[param_type], 0, 255);
+					sprintf(params_str[param_type], "%u", lwan_ctx.mac_params.params[param_type]);
+					break;
+				default:
+					continue; /* skip unknown bits */
+			}
+			param.set.param = params_str[param_type];
+			param.set.param_len = strlen(params_str[param_type]);
+
+			/* Force the command to execute in hardware */
+			cmd = make_cmd(token, strlen(token),
+						   &param, 0, CMD_SET);
+			cmd->def.local_state = false;
+			STAILQ_INSERT_TAIL(client->cmdq_head, cmd, entries);
+			lwan_ctx.mac_params.dirty &= ~(MAC_PARAM_BIT(param_type));
+		}
+	}
+
+	if  (!STAILQ_EMPTY(client->cmdq_head)) {
+		log(LOG_INFO, "accepted local client");
+		client->state = HTTP_CLIENT_REQUEST_COMPLETE;
+		STAILQ_INSERT_TAIL(lw->http.http_clientq_head, client, entries);
+	}
+	else {
+		free_http_client(lw, client);
+		this->client = NULL;
+		log(LOG_ERR, "cannot accept local client");
+	}
+}
+
 
 void generate_ctx()
 {
@@ -99,9 +177,20 @@ void generate_ctx()
 	client->local = true;
 	this->client = client;
 
+	cmd = make_cmd(TOKEN_AT_DELAY, sizeof(TOKEN_AT_DELAY) - 1,
+				   NULL, 5, CMD_INTERNAL);
+
+	STAILQ_INSERT_TAIL(client->cmdq_head, cmd, entries);
+
 	/* Initiate a acquire context command */
 	cmd = make_cmd(TOKEN_AT_CTX_ACQ, sizeof(TOKEN_AT_CTX_ACQ) - 1,
 				   NULL, 0, CMD_INTERNAL);
+
+	if (!cmd) {
+		free_http_client(lw, client);
+		this->client = NULL;
+		log(LOG_ERR, "cannot accept local client");
+	}
 
 	STAILQ_INSERT_TAIL(client->cmdq_head, cmd, entries);
 
@@ -116,6 +205,7 @@ void generate_ctx()
 		log(LOG_ERR, "cannot accept local client");
 	}
 }
+
 
 void restore_firmware_context()
 {
@@ -160,6 +250,7 @@ void restore_firmware_context()
 
 }
 
+
 void context_acquired(struct command *cmd)
 {
 	/* Split using delimiter '\r\n' */
@@ -195,18 +286,29 @@ void context_acquired(struct command *cmd)
 	write_context();
 }
 
-void reset_lwan_ctx()
-{
-	memset(&lwan_ctx, 0 , sizeof(struct lwan_context));
-	lwan_ctx.network_join_mode = 1;
-	lwan_ctx.confirmation_mode = 0;
 
+void reset_lwan_ctx(bool delete)
+{
+	struct mac_params mac_params = {
+		.dirty = 0x0000,
+		.params = { PARAM_UNINIT },
+	};
+
+	memset(&lwan_ctx, 0 , sizeof(struct lwan_context));
+	lwan_ctx.mac_params.network_join_mode = 1;
+	lwan_ctx.mac_params.confirmation_mode = 0;
+	lwan_ctx.mac_params = mac_params;
+	if (delete)
+		unlink(this->filename);
 }
+
 
 void context_manager_init(struct context_manager *ctx_mngr)
 {
+	reset_lwan_ctx(false);
 	this = ctx_mngr;
 	this->lwan_ctx = &lwan_ctx;
+	/* Uninitialised all mac params */
 	read_context();
 	restore_firmware_context();
 }
@@ -223,6 +325,7 @@ void context_manager_event(enum cmd_type cmd_type, struct command *cmd)
 			}
 			break;
 		case CMD_JOIN:
+			set_mac_params();
 			generate_ctx();
 			break;
 		case CMD_ACQUIRE_CONTEXT:
@@ -232,8 +335,8 @@ void context_manager_event(enum cmd_type cmd_type, struct command *cmd)
 			restore_firmware_context();
 			break;
 		case CMD_HARD_RESET:
-			reset_lwan_ctx();
-			write_context();
+			reset_lwan_ctx(true);
+			// write_context();
 			break;
 		default:
 			break;

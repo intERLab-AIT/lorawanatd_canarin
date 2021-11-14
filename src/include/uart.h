@@ -6,7 +6,7 @@
 #include <fcntl.h>
 #include <termios.h>
 #include "lorawanatd.h"
-#define BAUDRATE B19200
+#define BAUDRATE B9600
 
 int set_interface_attribs(int fd, speed_t speed);
 
