@@ -372,18 +372,19 @@ void on_read_http(evutil_socket_t fd, short what, void *arg)
 
 struct http_client * create_http_client(struct lrwanatd *lw, int fd)
 {
-    struct http_client *client;
-    client = malloc(sizeof(struct http_client));
-    client->fd = fd;
-    client->cmdq_head = init_cmd_queue();
-    client->is_json = client->timed_out =  false;
-    client->buf_len = client->request.path_len =
-    client->request.header_len = client->request.method_len =
-    client->request.content_len = 0;
-    client->state = HTTP_CLIENT_ACTIVE;
-    strcpy(client->error_resp, HTTP_ERROR_500);
-    memset(client->buf, 0, sizeof(client->buf));
-    return client;
+	struct http_client *client;
+	client = malloc(sizeof(struct http_client));
+	client->fd = fd;
+	client->cmdq_head = init_cmd_queue();
+	client->is_json = client->timed_out =  false;
+	client->buf_len = client->request.path_len =
+	client->request.header_len = client->request.method_len =
+	client->request.content_len = 0;
+	client->state = HTTP_CLIENT_ACTIVE;
+	client->local = client->restore_context = false;
+	strcpy(client->error_resp, HTTP_ERROR_500);
+	memset(client->buf, 0, sizeof(client->buf));
+	return client;
 }
 
 void on_accept_http(evutil_socket_t fd, short what, void *arg)
@@ -545,7 +546,17 @@ void process_http_clients(struct lrwanatd *lw)
 			if(!cmd) {
 				if (client->local) {
 					/* If the client is local, there is no fd to write data to */
+					bool timed_out = client->timed_out;
+					bool restore_context = client->restore_context;
 					free_http_client(lw, client);
+
+					if (timed_out && restore_context) {
+						/* Generate context save again */
+						context_manager_event(CMD_RESET, NULL);
+					} else {
+						context_manager_event(CMD_RESTORE_CONTEXT, NULL);
+					}
+
 					return;
 				}
 

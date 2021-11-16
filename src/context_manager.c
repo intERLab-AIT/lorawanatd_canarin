@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "context_manager.h"
+#include "util.h"
 #include "http.h"
 #include "command.h"
 #include "logger.h"
@@ -218,6 +219,7 @@ void restore_firmware_context()
 	lw = global_lw;
 	client = create_http_client(lw, 0);
 	client->local = true;
+	client->restore_context = true;	/* trying to restore context */
 	this->client = client;
 
 	/* Initiate a acquire context command */
@@ -234,9 +236,15 @@ void restore_firmware_context()
 			log(LOG_INFO, "added restore command for context type %d", type);
 		}
 
+		cmd = make_cmd(TOKEN_AT_DELAY, sizeof(TOKEN_AT_DELAY) - 1,
+					   NULL, 2, CMD_INTERNAL);
+
+		STAILQ_INSERT_TAIL(client->cmdq_head, cmd, entries);
+
 	}
 
-	STAILQ_INSERT_TAIL(lw->http.http_clientq_head, client, entries);
+	/* Always trigger restore first */
+	STAILQ_INSERT_HEAD(lw->http.http_clientq_head, client, entries);
 
 	if (STAILQ_EMPTY(client->cmdq_head)) {
 		free_http_client(lw, client);
@@ -313,6 +321,30 @@ void context_manager_init(struct context_manager *ctx_mngr)
 	restore_firmware_context();
 }
 
+bool check_if_client_error()
+{
+	struct http_client *client = this->client;
+	struct command *cmd;
+
+	if (!client) {
+		return false;
+	}
+
+	if (client->cmdq_head == NULL) {
+		/* The client is not running anymore */
+		return false;
+	}
+	STAILQ_FOREACH(cmd, client->cmdq_head, entries) {
+		if (cmd == NULL) break;
+		if (cmd->state == CMD_NEW || cmd->def.type == CMD_DELAY)
+			continue;
+		if (!is_buffer_contains(cmd->buf, cmd->buf_len, "OK")) {
+			return true;
+		}
+	}
+
+	return false;
+}
 
 void context_manager_event(enum cmd_type cmd_type, struct command *cmd)
 {
@@ -330,6 +362,12 @@ void context_manager_event(enum cmd_type cmd_type, struct command *cmd)
 			break;
 		case CMD_ACQUIRE_CONTEXT:
 			context_acquired(cmd);
+			break;
+		case CMD_RESTORE_CONTEXT:
+			/* if we encounter error, restore again */
+			if (check_if_client_error()) {
+				restore_firmware_context();
+			}
 			break;
 		case CMD_RESET:
 			restore_firmware_context();

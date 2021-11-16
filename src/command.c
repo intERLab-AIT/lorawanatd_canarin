@@ -7,6 +7,7 @@
 #include <regex.h>
 #include <stdlib.h>
 #include "command.h"
+#include "util.h"
 #include "logger.h"
 #include "push.h"
 
@@ -964,22 +965,6 @@ char * construct_delay_cmd(struct command *cmd)
 	return delay_msg;
 }
 
-bool is_buffer_contains(char *buf, size_t buflen, const char *str)
-{
-	/*char *spos;
-	size_t str_len;
-
-	str_len = strlen(str);
-	spos = buf + (buflen - str_len);
-	return strncmp(spos, str, str_len);
-	*/
-	char *tbuf = malloc(buflen + 1);
-	strncpy(tbuf, buf, buflen);
-	tbuf[buflen] = '\0';
-	bool result = strstr(tbuf, str) == NULL;
-	free(tbuf);
-	return result;
-}
 
 enum cmd_res_code wait_for_ok(struct command *cmd)
 {
@@ -989,7 +974,7 @@ enum cmd_res_code wait_for_ok(struct command *cmd)
 	resplen = sizeof(response)/sizeof(response[0]);
 
 	for (i = 0; i < resplen; i++) {
-		if (!is_buffer_contains(cmd->buf, cmd->buf_len, response[i]))
+		if (is_buffer_contains(cmd->buf, cmd->buf_len, response[i]))
 			return CMD_RES_OK;
 	}
 	return CMD_RES_WAITING;
@@ -1026,9 +1011,9 @@ enum cmd_res_code wait_for_ok_or_timeout(struct command *cmd)
 
 enum cmd_res_code wait_for_joined_or_timeout(struct command *cmd)
 {
-	if (!is_buffer_contains(cmd->buf, cmd->buf_len, JOINED_RESPONSE))
+	if (is_buffer_contains(cmd->buf, cmd->buf_len, JOINED_RESPONSE))
 		return CMD_RES_OK;
-	else if (!is_buffer_contains(cmd->buf, cmd->buf_len, JOIN_FAILED_RESPONSE))
+	else if (is_buffer_contains(cmd->buf, cmd->buf_len, JOIN_FAILED_RESPONSE))
 		return CMD_RES_TIMEOUT; // notify failure as epoc_timeout.
 
 	return wait_for_timeout(cmd);
@@ -1130,7 +1115,7 @@ void async_recv(struct lrwanatd *lw, char *buf, size_t buflen)
 void async_has_more_tx(struct lrwanatd *lw, char *buf, size_t buflen)
 {
 	char  *str = "Network Server is asking for an uplink transmission\n\r";
-	if (!is_buffer_contains(buf, buflen, str)) {
+	if (is_buffer_contains(buf, buflen, str)) {
 		lw->push.cb->more_tx(lw, NULL, 0); /* Yay, a successful match, push it out */
 		// clean it?
 	}

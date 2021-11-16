@@ -181,7 +181,7 @@ void uart_dev_write(evutil_socket_t fd, short what, void *arg)
 	if (!tx)
 		return;
 
-	flush_dev_read(fd);
+	// flush_dev_read(fd);
 
 	wlen = write(lw->uart.fd, tx->buf, tx->buf_len);
 	tcdrain(lw->uart.fd);

@@ -52,6 +52,7 @@ struct http_client {
 	bool timed_out;
 	char error_resp[255];
 	bool local; /* True if client in an internal client */
+	bool restore_context; /* True if client is trying to restore context */
 };
 
 struct http_client_queue_head *init_http_client_queue();
