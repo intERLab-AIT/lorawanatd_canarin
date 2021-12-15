@@ -214,7 +214,7 @@ void restore_firmware_context()
 	struct lrwanatd *lw;
 	struct command *cmd;
 
-	log(LOG_INFO, "Initiating context save!\n");
+	log(LOG_INFO, "Initiating context restore!\n");
 
 	lw = global_lw;
 	client = create_http_client(lw, 0);
@@ -348,6 +348,7 @@ bool check_if_client_error()
 
 void context_manager_event(enum cmd_type cmd_type, struct command *cmd)
 {
+	log(LOG_INFO, "Context manager event %u", cmd_type);
 	switch (cmd_type) {
 		case CMD_ASYNC_RECV:
 		case CMD_SEND_BINARY:

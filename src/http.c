@@ -517,7 +517,9 @@ void process_http_clients(struct lrwanatd *lw)
 					cmdres = cmd->def.process_cmd(cmd);
 					switch (cmdres) {
 						case CMD_RES_TIMEOUT:
-							client->timed_out = true;
+							if (cmd->def.type != CMD_DELAY) {
+								client->timed_out = true;
+							}
 							log(LOG_INFO, "command timed out.");
 						case CMD_RES_OK:
 							cmd->state = CMD_EXECUTED;
