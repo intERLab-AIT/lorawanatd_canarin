@@ -9,6 +9,7 @@
 /* Reset the lora board */
 #define AT_CMD_RESET "ATZ"
 #define TOKEN_AT_RESET "reset"
+#define TOKEN_AT_HARD_RESET "hard_reset"
 
 /* Get OK status */
 #define AT_CMD "AT"
@@ -75,6 +76,7 @@
 #define TOKEN_AT_JN2DL "join2_delay"
 
 /* Network Join Mode, 0: ABP, 1: OTA */
+/* This should be handled by lorawanatd now */
 #define AT_CMD_NJM "AT+NJM"
 #define TOKEN_AT_NJM "network_join_mode"
 
@@ -95,7 +97,7 @@
 #define TOKEN_AT_NJS "network_join_status"
 
 /* Send Hex */
-#define AT_CMD_SENDB "AT+SENDB"
+#define AT_CMD_SENDB "AT+SEND"
 #define TOKEN_AT_SENDB "sendb"
 
 /* Send Text */
@@ -122,17 +124,27 @@
 #define AT_CMD_FCNT "AT+FCNT"
 #define TOKEN_AT_FCNT "frame_counter"
 
+/* Acquire and restore context */
+#define AT_CMD_CTX "AT+CTX"
+#define TOKEN_AT_CTX_ACQ "context_acquire"
+#define TOKEN_AT_CTX_RES "context_restore"
+
+/* Delay the board */
+#define AT_CMD_DELAY "DELAY"
+#define TOKEN_AT_DELAY "delay"
 
 enum cmd_group {
 	CMD_ASYNC, /* Asynchronous events like RECV */
 	CMD_ACTION, /* Single one shot commands like AT, ATZ and AT+JOIN */
 	CMD_GET, /* Get value from Mcu */
 	CMD_SET, /* Set value in Mcu */
-	CMD_SEND /* Send over LoRaWAN */
+	CMD_SEND, /* Send over LoRaWAN */
+	CMD_INTERNAL, /* Internal commands, not exposed through HTTP API */
 };
 
 enum cmd_type {
 	CMD_RESET,
+	CMD_HARD_RESET,
 	CMD_STATUS,
 	CMD_JOIN,
 	CMD_GET_DEUI,
@@ -179,6 +191,9 @@ enum cmd_type {
 	CMD_SEND_BINARY,
 	CMD_ASYNC_RECV,
 	CMD_ASYNC_MORE_TX,
+	CMD_ACQUIRE_CONTEXT,
+	CMD_RESTORE_CONTEXT,
+	CMD_DELAY,
 	CMD_TYPE_MAX,
 };
 
@@ -196,11 +211,10 @@ enum cmd_res_code {
 	CMD_RES_OK = 0,
 };
 
-
 struct command_def; /* command definition */
 struct command;
 
-typedef char * (*get_cmd_fp)(struct command *);
+typedef char * (*construct_cmd_fp)(struct command *);
 typedef enum cmd_res_code (*process_cmd_fp)(struct command *);
 typedef void (*async_cmd_fp)(struct lrwanatd *lw, char *buf, size_t buflen);
 
@@ -213,40 +227,41 @@ struct command_def {
 	size_t token_len;
 	char *cmd;
 	size_t cmd_len;
-	get_cmd_fp get_cmd;
+	construct_cmd_fp construct_cmd;
 	process_cmd_fp process_cmd;
 	async_cmd_fp async_cmd;
+	bool local_state;
 };
 
 struct command_param_set {
-	time_t timeout;
 	char *param;
 	size_t param_len;
 };
 
 struct command_param_send {
-	time_t timeout;
 	char *param;
 	size_t param_len;
 	char *port;
 	size_t port_len;
 };
 
-struct command_param_timeout {
-	time_t timeout;
+struct command_param_internal {
+	int context_type;
 };
 
 union command_param {
 	struct command_param_set set;
 	struct command_param_send send;
-	struct command_param_timeout timeout;
+	struct command_param_internal internal;
 };
 
 struct command {
 	STAILQ_ENTRY(command) entries;
 	struct command_def def;
+	time_t epoc_timeout;
+	time_t timeout;
 	union command_param param;
-	char buf[1024];
+	char buf[4196];
 	size_t buf_len;
 	enum cmd_state state;
 };
@@ -255,8 +270,7 @@ struct command {
 struct cmd_queue_head *init_cmd_queue();
 
 struct command *make_cmd(char *token, size_t token_len,
-		char *param, size_t param_len,
-		char *port, size_t port_len,
+		union  command_param *param,
 		time_t timeout_in_sec,
 		enum cmd_group group);
 
@@ -267,5 +281,4 @@ void set_active_cmd_uart_buf(struct cmd_queue_head *cmdq_head, char *buf, size_t
 void clear_uart_buf(size_t *buflen);
 
 void free_cmd_queue(struct cmd_queue_head *cmdq_head);
-
 #endif

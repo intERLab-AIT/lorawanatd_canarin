@@ -8,6 +8,7 @@
 #include <sys/epoll.h>
 #include <stdbool.h>
 #include <regex.h>
+#include "context_manager.h"
 
 /* Function return status */
 enum {
@@ -75,6 +76,7 @@ struct lrwanatd {
 	struct http_def http;
 	struct push_def push;
 	struct regex_def regex;
+	struct context_manager ctx_mngr;
 };
 
 extern struct lrwanatd *global_lw;

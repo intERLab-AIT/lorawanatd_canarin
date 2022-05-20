@@ -24,6 +24,8 @@ The compilation flags `-DPSTDOUT` will print logs in standard output instead of 
 
 `$ lorawanatd -d /dev/ttyXXXX`
 
+`-r` flag can be used to allow access to the exposed ports from hosts in other machines.
+
 HTTP port is 5555. TCP push port is 6666.
 
 
@@ -31,7 +33,8 @@ The API for HTTP usages are:
 
 | URL       | Method     | Body                                                  | Description |
 |-----------|------------|-------------------------------------------------------|-------------|
-/reset      | GET        |                                                       | Triggers a reset of Lora module. |
+/reset      | GET        |                                                       | Triggers a soft reset of Lora module. LoRa hardware context are still saved and reloaded.|
+/hard_reset | GET        |                                                       | Triggers a hard reset of Lora module. All LoRa hardware contexts are lost.|
 /status     | GET        |                                                       | Replies 'OK' is Lora module is ok. |
 /join       | GET        |                                                       | Initiates a join in OTAA. Timeouts if cannot join in time. |
 /config/get | POST       | A json list with param name: `[ param1, param2, ...]` | Get parameter values. |
@@ -48,8 +51,8 @@ The API for HTTP usages are:
 | device_eui             | Device EUI        |         | :heavy_check_mark:         |              | 
 | device_address         | Device address    |         | :heavy_check_mark:         | :heavy_check_mark: |
 | application_key        | Application key   |         | :heavy_check_mark:         | :heavy_check_mark: |
-| network_session_key    | Network session key |       |             | :heavy_check_mark:  |
-| application_session_key| Application session key |   |             |  :heavy_check_mark: |
+| ~~network_session_key~~| Network session key |       |             | :heavy_check_mark:  |
+| ~~application_session_key~~| Application session key |   |             |  :heavy_check_mark: |
 | application_eui        | Application EUI   |         |  :heavy_check_mark:        | :heavy_check_mark:  |
 | adaptive_data_rate     | Adaptive Data rate | 0: off, 1: on |  :heavy_check_mark: | :heavy_check_mark:  |
 | transmit_power         | Transmit power    | 0-5     | :heavy_check_mark:         | :heavy_check_mark:  |
@@ -70,7 +73,20 @@ The API for HTTP usages are:
 | confirmation_status    | Get confirmation status of last send | 0: not confirmed, 1: confirmed | :heavy_check_mark: | | 
 | snr                    | Get SNR of last received packet | | :heavy_check_mark:     |   |
 | rssi                   | Get RSSI of last recevied packet | | :heavy_check_mark:    |   |
-| frame_counter          | Set up and down frame counters  of LoraWan stack.| "[up]:[down]", up and down are uint32_t. |  |  :heavy_check_mark: |
+| ~~frame_counter~~      | Set up and down frame counters  of LoraWan stack.| "[up]:[down]", up and down are uint32_t. |  |  :heavy_check_mark: |
+
+## Handling persistant LoRaWAN data
+
+The session keys, and frame counters and other hardware contexts are automatically saved when
+* A join is successful
+* Send and Receive events are successful for 10 times.
+
+These saved contexts are loaded when
+* The application is initializing
+* When *soft* reset (/reset) is initiated.
+
+*Hard* reset is the only way to delete the saved context and start afresh. (Motivated users can delete `CONTEXT_FILE` from the filesystem as well.)
 
 
-**When network join mode is changed, it resets other parameters to default firmware values, take care to set network join mode first then change the other parameters.**
+
+~~**When network join mode is changed, it resets other parameters to default firmware values, take care to set network join mode first then change the other parameters.**~~

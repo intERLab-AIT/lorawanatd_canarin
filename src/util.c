@@ -143,3 +143,20 @@ char *trim(char *buf, size_t *len)
 
 	return buf;
 }
+
+bool is_buffer_contains(char *buf, size_t buflen, const char *str)
+{
+	/*char *spos;
+	size_t str_len;
+
+	str_len = strlen(str);
+	spos = buf + (buflen - str_len);
+	return strncmp(spos, str, str_len);
+	*/
+	char *tbuf = malloc(buflen + 1);
+	strncpy(tbuf, buf, buflen);
+	tbuf[buflen] = '\0';
+	bool result = strstr(tbuf, str) != NULL;
+	free(tbuf);
+	return result;
+}

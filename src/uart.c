@@ -120,6 +120,23 @@ void cb_read(evutil_socket_t fd, short what, void *arg)
 }
 #endif
 
+void uart_handle_post_read(struct lrwanatd *lw, char *buf, int buflen)
+{
+	/*	While reading, check for asynchronous events.
+	 *	Then clean the buffer. Then pass it to client if possible.
+	 */
+	memcpy(lw->uart.buf + lw->uart.buf_len, buf, buflen);
+	lw->uart.buf_len += buflen;
+	lw->uart.buf[lw->uart.buf_len] = '\0';
+
+	run_async_cmd(lw, lw->uart.buf, lw->uart.buf_len);
+
+	/* TODO: the cleaning part */
+
+	set_http_client_uart_buf(lw, buf, buflen);
+}
+
+
 int uart_dev_read(evutil_socket_t fd, short what, void *arg)
 {
 	struct lrwanatd *lw;
@@ -136,20 +153,19 @@ int uart_dev_read(evutil_socket_t fd, short what, void *arg)
 		return 1;
 	}
 
-	/*	While reading, check for asynchronous events.
-	 *	Then clean the buffer. Then pass it to client if possible.
-	 */
+	uart_handle_post_read(lw, buf, ret);
 
-	memcpy(lw->uart.buf + lw->uart.buf_len, buf, ret);
-	lw->uart.buf_len += ret;
-	lw->uart.buf[lw->uart.buf_len] = '\0';
-
-	run_async_cmd(lw, lw->uart.buf, lw->uart.buf_len);
-
-	/* TODO: the cleaning part */
-
-	set_http_client_uart_buf(lw, buf, ret);
 	return ret;
+}
+
+void flush_dev_read(evutil_socket_t fd)
+{
+	int ret = 1;
+	char buf[READ_SIZE];
+	while (ret != 0) {
+		ret = read(fd, buf, READ_SIZE);
+	}
+
 }
 
 void uart_dev_write(evutil_socket_t fd, short what, void *arg)
@@ -164,6 +180,8 @@ void uart_dev_write(evutil_socket_t fd, short what, void *arg)
 
 	if (!tx)
 		return;
+
+	// flush_dev_read(fd);
 
 	wlen = write(lw->uart.fd, tx->buf, tx->buf_len);
 	tcdrain(lw->uart.fd);
@@ -249,7 +267,7 @@ void uart_reset(struct lrwanatd *lw, bool teardown)
 }
 
 
-void process_write(evutil_socket_t fd, short what, void *arg)
+void process_cmd(evutil_socket_t fd, short what, void *arg)
 {
 	struct lrwanatd *lw;
 	struct http_client *client;
@@ -276,29 +294,36 @@ void process_write(evutil_socket_t fd, short what, void *arg)
 			if (cmd) {
 				assert(cmd->state == CMD_NEW);
 
-				buf = cmd->def.get_cmd(cmd);
+				buf = cmd->def.construct_cmd(cmd);
 				buflen = strlen(buf);
 
-				log(LOG_INFO, "tx[len:%d]: %s", buflen, buf);
-				// str_to_hex(buf, buflen);
+				if (cmd->def.local_state) {
+					/* These commands run locally and not on the LoRa hardware */
+					cmd->state = CMD_EXECUTING;
+					uart_handle_post_read(lw, buf, buflen);
+				}
+				else {
+					log(LOG_INFO, "tx[len:%d]: %s", buflen, buf);
+					// str_to_hex(buf, buflen);
 
-				if (cmd->def.type == CMD_RESET)
-					uart_reset(lw, true);
+					if (cmd->def.type == CMD_RESET)
+						uart_reset(lw, true);
 
-				if (uart_write(lw, buf, buflen) == RETURN_ERROR) {
-					cmd->state = CMD_ERROR;
+					if (uart_write(lw, buf, buflen) == RETURN_ERROR) {
+						cmd->state = CMD_ERROR;
+						free(buf);
+						return;
+					}
+
 					free(buf);
-					return;
-				}
 
-				free(buf);
-
-				// Write enter key
-				if (uart_write(lw, "\r\n", 2) == RETURN_ERROR) {
-					cmd->state = CMD_ERROR;
-					return;
+					// Write enter key
+					if (uart_write(lw, "\r\n", 2) == RETURN_ERROR) {
+						cmd->state = CMD_ERROR;
+						return;
+					}
+					cmd->state = CMD_EXECUTING;
 				}
-				cmd->state = CMD_EXECUTING;
 			}
 		}
 	}
@@ -332,9 +357,11 @@ void setup_uart_loop_timer(struct lrwanatd *lw, bool isInit)
 {
 	struct timeval timer = { 0, TIMER_USEC_INTERVAL };
 
-	if (!isInit)
-		evtimer_del(lw->event.timer_processor);
-	lw->event.timer_processor = evtimer_new(lw->event.base, cb_timer, (void *)lw);
+	//if (!isInit)
+		//evtimer_del(lw->event.timer_processor);
+	if (isInit) {
+        lw->event.timer_processor = evtimer_new(lw->event.base, cb_timer, (void *) lw);
+    }
 	evtimer_add(lw->event.timer_processor, &timer);
 }
 
@@ -344,7 +371,7 @@ void cb_timer(evutil_socket_t fd, short what, void *arg)
 
 	remove_disconnected_clients(lw);
 	process_http_clients(lw);
-	process_write(fd, what, arg);
+	process_cmd(fd, what, arg);
 	//cb_write(fd, what, arg);
 	uart_io(lw);
 	setup_uart_loop_timer(lw, false);

@@ -3,7 +3,6 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <stdlib.h>
-#include <err.h>
 #include <arpa/inet.h>
 #include <string.h>
 #include <assert.h>
@@ -34,6 +33,8 @@ char * get_http_action_string(enum http_action action)
 			return "Undefined";
 		case HTTP_RESET:
 			return "Reset";
+		case HTTP_HARD_RESET:
+			return "Hard Reset";
 		case HTTP_STATUS:
 			return "Status";
 		case HTTP_JOIN:
@@ -57,6 +58,10 @@ enum http_action get_action_from_http_request(struct http_client *client)
 	if (strncmp("GET", client->request.method , client->request.method_len) == 0
 			&& strncmp("/reset", client->request.path, client->request.path_len) == 0)
 		return HTTP_RESET;
+
+	if (strncmp("GET", client->request.method , client->request.method_len) == 0
+		&& strncmp("/hard_reset", client->request.path, client->request.path_len) == 0)
+		return HTTP_HARD_RESET;
 
 	if (strncmp("GET", client->request.method , client->request.method_len) == 0
 			&& strncmp("/status", client->request.path, client->request.path_len) == 0)
@@ -140,16 +145,20 @@ int add_cmd(struct http_client *client)
 	switch(client->action) {
 		case HTTP_RESET:
 			cmd = make_cmd(TOKEN_AT_RESET, sizeof(TOKEN_AT_RESET) - 1,
-					NULL, 0, NULL, 0, 5, CMD_ACTION);
+					NULL, 10, CMD_ACTION);
+			break;
+		case HTTP_HARD_RESET:
+			cmd = make_cmd(TOKEN_AT_HARD_RESET, sizeof(TOKEN_AT_HARD_RESET) - 1,
+						   NULL, 10, CMD_ACTION);
 			break;
 		case HTTP_STATUS:
 			cmd = make_cmd(TOKEN_AT, sizeof(TOKEN_AT) - 1,
-					NULL, 0, NULL, 0, 0, CMD_ACTION);
+					NULL, 0, CMD_ACTION);
 			break;
 		case HTTP_JOIN:
 	/* Timeout of 1 minute */
 			cmd = make_cmd(TOKEN_AT_JOIN , sizeof(TOKEN_AT_JOIN) - 1,
-					NULL, 0, NULL, 0, 60,CMD_ACTION);
+					NULL, 60,CMD_ACTION);
 			break;
 	}
 	if (cmd)
@@ -164,7 +173,7 @@ int parse_json_content_add_cmd(struct http_client *client)
 {
 	struct command *cmd = NULL;
 	char *data, *port;
-	size_t datalen, portlen;
+	size_t data_len, port_len;
 	jsmn_parser p;
 	jsmntok_t t[128];
 	jsmntok_t *tok, *tok1, *tok2;
@@ -199,7 +208,7 @@ int parse_json_content_add_cmd(struct http_client *client)
 				char *tkstr = client->request.content + tok->start;
 				size_t tklen = tok->end - tok->start;
 				/* 1 minute timeout */
-				cmd = make_cmd(tkstr, tklen, NULL, 0, NULL, 0, 60, CMD_GET);
+				cmd = make_cmd(tkstr, tklen, NULL, 60, CMD_GET);
 				if (cmd)
 					STAILQ_INSERT_TAIL(client->cmdq_head, cmd, entries);
 				else
@@ -220,6 +229,7 @@ int parse_json_content_add_cmd(struct http_client *client)
 				return RETURN_ERROR;
 
 			for (i =1; i < t[0].size * 2 + 1; i += 2) {
+				union command_param cmd_param;
 				tok1 = &t[i];
 				tok2 = &t[i + 1];
 
@@ -228,8 +238,10 @@ int parse_json_content_add_cmd(struct http_client *client)
 
 				char *param = client->request.content + tok2->start;
 				size_t paramlen = tok2->end - tok2->start;
+				cmd_param.set.param = param;
+				cmd_param.set.param_len = paramlen;
 				/* 1 minute timeout */
-				cmd = make_cmd(tkstr, tklen, param, paramlen, NULL, 0, 60, CMD_SET);
+				cmd = make_cmd(tkstr, tklen, &cmd_param, 60, CMD_SET);
 				if (cmd)
 					STAILQ_INSERT_TAIL(client->cmdq_head, cmd, entries);
 				else
@@ -245,7 +257,7 @@ int parse_json_content_add_cmd(struct http_client *client)
 			*		"port": 21,
 			*	}
 			*/
-			datalen = portlen = 0;
+			data_len = port_len = 0;
 			data = port = NULL;
 
 			if (t[0].type != JSMN_OBJECT)
@@ -263,21 +275,27 @@ int parse_json_content_add_cmd(struct http_client *client)
 
 				if (!strncmp(tkstr, "data", tklen)) {
 					data = param;
-					datalen = paramlen;
+                    data_len = paramlen;
 				}
 				else if (!strncmp(tkstr, "port", tklen)) {
 					port = param;
-					portlen = paramlen;
+                    port_len = paramlen;
 				}
 			}
 
 			if (data && port) {
+				union command_param cmd_param;
+				cmd_param.send.param = data;
+				cmd_param.send.param_len = data_len;
+				cmd_param.send.port = port;
+				cmd_param.send.port_len = port_len;
+
 				if (client->action == HTTP_SEND_DATA)
 					cmd = make_cmd(TOKEN_AT_SEND, sizeof(TOKEN_AT_SEND) - 1,
-							data, datalen, port, portlen, 0, CMD_SEND);
+                                   &cmd_param, 0, CMD_SEND);
 				else
 					cmd = make_cmd(TOKEN_AT_SENDB, sizeof(TOKEN_AT_SENDB) - 1,
-							data, datalen, port, portlen, 0, CMD_SEND);
+                                   &cmd_param, 0, CMD_SEND);
 
 				if (cmd)
 					STAILQ_INSERT_TAIL(client->cmdq_head, cmd, entries);
@@ -352,6 +370,23 @@ void on_read_http(evutil_socket_t fd, short what, void *arg)
 	}
 }
 
+struct http_client * create_http_client(struct lrwanatd *lw, int fd)
+{
+	struct http_client *client;
+	client = malloc(sizeof(struct http_client));
+	client->fd = fd;
+	client->cmdq_head = init_cmd_queue();
+	client->is_json = client->timed_out =  false;
+	client->buf_len = client->request.path_len =
+	client->request.header_len = client->request.method_len =
+	client->request.content_len = 0;
+	client->state = HTTP_CLIENT_ACTIVE;
+	client->local = client->restore_context = false;
+	strcpy(client->error_resp, HTTP_ERROR_500);
+	memset(client->buf, 0, sizeof(client->buf));
+	return client;
+}
+
 void on_accept_http(evutil_socket_t fd, short what, void *arg)
 {
 	struct lrwanatd *lw = (struct lrwanatd *)arg;
@@ -370,23 +405,18 @@ void on_accept_http(evutil_socket_t fd, short what, void *arg)
 	if (set_nonblock_sock(client_fd) < 0)
 		log(LOG_INFO, "http sock non blocking not set.");
 
-	client = malloc(sizeof(struct http_client));
-	client->fd = client_fd;
-	client->cmdq_head = init_cmd_queue();
-	client->is_json = client->timed_out =  false;
-	client->buf_len = client->request.path_len =
-		client->request.header_len = client->request.method_len =
-		client->request.content_len = 0;
-	client->state = HTTP_CLIENT_ACTIVE;
+	client = create_http_client(lw, client_fd);
 
-	strcpy(client->error_resp, HTTP_ERROR_500);
-
-	memset(client->buf, 0, sizeof(client->buf));
-	STAILQ_INSERT_TAIL(lw->http.http_clientq_head, client, entries);
+	/* This is not local client */
+	client->local = false;
 
 	client->read_event = event_new(lw->event.base, client_fd, EV_READ|EV_PERSIST,
-			on_read_http, (void *)client);
+								   on_read_http, (void *)client);
 	event_priority_set(client->read_event, 1);
+
+
+	STAILQ_INSERT_TAIL(lw->http.http_clientq_head, client, entries);
+
 	event_add(client->read_event, NULL);
 
 	log(LOG_INFO, "accepted http connection from %s with fd %d\n",
@@ -416,7 +446,7 @@ char *reply_get_cmds(struct http_client *client)
 
 int http_client_write(struct http_client *client, char *buf, size_t len)
 {
-	int wlen;
+	size_t wlen;
 	wlen = write(client->fd, buf, len);
 	if (wlen < len) {
 		log(LOG_INFO, "short write, not all data echoed back to http client.\n");
@@ -439,9 +469,11 @@ void set_http_client_uart_buf(struct lrwanatd *lw, char *buf, size_t len)
 
 void free_http_client(struct lrwanatd *lw, struct http_client *client)
 {
-	event_del(client->read_event);
-	event_free(client->read_event);
-	close(client->fd);
+	if (!client->local) {
+		event_del(client->read_event);
+		event_free(client->read_event);
+		close(client->fd);
+	}
 	free_cmd_queue(client->cmdq_head);
 	STAILQ_REMOVE(lw->http.http_clientq_head, client, http_client, entries);
 	free(client);
@@ -485,13 +517,20 @@ void process_http_clients(struct lrwanatd *lw)
 					cmdres = cmd->def.process_cmd(cmd);
 					switch (cmdres) {
 						case CMD_RES_TIMEOUT:
-							client->timed_out = true;
-							log(LOG_INFO, "command timed out.");
+							if (cmd->def.type != CMD_DELAY) {
+								client->timed_out = true;
+								log(LOG_INFO, "%p command timed out of type %d.", cmd, cmd->def.token);
+							}
 						case CMD_RES_OK:
 							cmd->state = CMD_EXECUTED;
 							log(LOG_INFO, "rx[len:%d]: %.*s", cmd->buf_len, cmd->buf_len, cmd->buf);
 							/* Clear the global buffer */
 							clear_uart_buf(&(lw->uart.buf_len));
+							/* Signal for store */
+							if (!client->timed_out)
+								context_manager_event(cmd->def.type, cmd);
+							break;
+						default:
 							break;
 					}
 					return;
@@ -507,6 +546,22 @@ void process_http_clients(struct lrwanatd *lw)
 			}
 
 			if(!cmd) {
+				if (client->local) {
+					/* If the client is local, there is no fd to write data to */
+					bool timed_out = client->timed_out;
+					bool restore_context = client->restore_context;
+					free_http_client(lw, client);
+
+					if (timed_out && restore_context) {
+						/* Generate context save again */
+						context_manager_event(CMD_RESET, NULL);
+					} else {
+						//context_manager_event(CMD_RESTORE_CONTEXT, NULL);
+					}
+
+					return;
+				}
+
 				if (client->timed_out)
 					httpres = "HTTP/1.1 504 Gateway Timeout\nContent-Type: application/json\n\n";
 				else
@@ -518,10 +573,13 @@ void process_http_clients(struct lrwanatd *lw)
 				http_client_write(client, jsondata, strlen(jsondata));
 
 				free(jsondata);
-				free_http_client(lw, client);
+
+                free_http_client(lw, client);
+
 			}
 		}
 		else if (client->state < HTTP_CLIENT_ACTIVE) {
+			assert(!client->local);
 			/* Disconnect, error, anything which is not active or request complete */
 			http_client_write(client, client->error_resp, strlen(client->error_resp));
 			/* delete all commands */

@@ -24,11 +24,19 @@ static void log_cb(int priority, const char *msg)
 int parse_opts(struct lrwanatd *lw, int argc, char **argv)
 {
 	int opt;
-	while((opt = getopt(argc, argv, ":f:r")) != -1) {
+	while((opt = getopt(argc, argv, ":f:c:b:r")) != -1) {
 		switch(opt) {
 			case 'f':
 				strcpy(lw->uart.file, optarg);
 				log(LOG_INFO, "uart device: %s", lw->uart.file);
+				break;
+			case 'c':
+				strcpy(lw->ctx_mngr.filename, optarg);
+				log(LOG_INFO, "context manager file: %s", lw->ctx_mngr.filename);
+				break;
+			case 'b':
+				lw->uart.baudrate = strtol(optarg, NULL, 10);
+				log(LOG_INFO, "uart baudrate: %u", lw->uart.baudrate);
 				break;
 			case 'r':
 				lw->remote_mode = true;
@@ -40,6 +48,8 @@ int parse_opts(struct lrwanatd *lw, int argc, char **argv)
 			case '?':
 				log(LOG_INFO, "unknown option: %c", optopt);
 				break;
+			default:
+				break;
 		}
 	}
 
@@ -48,11 +58,22 @@ int parse_opts(struct lrwanatd *lw, int argc, char **argv)
 		return RETURN_ERROR;
 	}
 
+	if (!strlen(lw->ctx_mngr.filename)) {
+		log(LOG_INFO, "Invalid context manager filename.");
+		return RETURN_ERROR;
+	}
+
+	if (lw->uart.baudrate < 0) {
+		log(LOG_INFO, "Invalid uart baudrate.");
+		return RETURN_ERROR;
+	}
+
 	return RETURN_OK;
 }
 
-static const char *recv_pattern = "\\+EVT:([0-9]+):([a-f0-9]+)..#FCNTDOWN:([0-9]+)#..\\+EVT:[A-Z0-9]+, RSSI (-?[0-9]+), SNR (-?[0-9]+)..";
+//static const char *recv_pattern = "\\+EVT:([0-9]+):([a-f0-9]+)..#FCNTDOWN:([0-9]+)#..\\+EVT:[A-Z0-9]+, RSSI (-?[0-9]+), SNR (-?[0-9]+)..";
 
+static const char *recv_pattern = "\\+EVT:([0-9]+):[0-9]+:([a-f0-9]+)..\\+EVT:(RX_[0-9]), DR [0-9], RSSI (-?[0-9]+), SNR (-?[0-9]+)..";
 int init_regex(struct lrwanatd *lw)
 {
 	if (regcomp(&lw->regex.recv, recv_pattern, REG_EXTENDED)) {
@@ -65,7 +86,6 @@ int init_regex(struct lrwanatd *lw)
 
 int init(struct lrwanatd *lw, int argc, char **argv)
 {
-
 	lw->pid = getpid();
 	lw->sid = getsid(lw->pid);
 	log(LOG_INFO, "LoRaWANATd started. Pid:%d, Sid:%d.", lw->pid, lw->sid);
@@ -89,6 +109,7 @@ int init(struct lrwanatd *lw, int argc, char **argv)
 		return RETURN_ERROR;
 	} else
 		log(LOG_INFO, "push socket opened successfully port 6666.");
+
 
 	if (init_regex(lw) == RETURN_ERROR)
 		return RETURN_ERROR;
@@ -123,9 +144,10 @@ void clean(struct lrwanatd *lw)
 
 	free(lw->http.http_clientq_head);
 	free(lw->push.push_clientq_head);
-	free(lw);
 
 	regfree(&lw->regex.recv);
+
+	free(lw);
 }
 
 void sigint_handler(int signum)
@@ -159,6 +181,8 @@ int main(int argc, char **argv)
 	setup_uart_events(global_lw);
 	setup_http_events(global_lw);
 	setup_push_events(global_lw);
+
+	context_manager_init(&global_lw->ctx_mngr);
 
 	event_base_dispatch(global_lw->event.base);
 

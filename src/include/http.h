@@ -12,6 +12,7 @@ STAILQ_HEAD(http_client_queue_head, http_client);
 enum http_action {
 	HTTP_UNDEFINED,
 	HTTP_RESET,
+	HTTP_HARD_RESET,
 	HTTP_STATUS,
 	HTTP_JOIN,
 	HTTP_GET_CONFIG,
@@ -50,6 +51,8 @@ struct http_client {
 	bool is_json;
 	bool timed_out;
 	char error_resp[255];
+	bool local; /* True if client in an internal client */
+	bool restore_context; /* True if client is trying to restore context */
 };
 
 struct http_client_queue_head *init_http_client_queue();
@@ -66,4 +69,7 @@ void process_http_clients(struct lrwanatd *lw);
 
 void remove_disconnected_http_clients(struct lrwanatd *lw);
 
+struct http_client * create_http_client(struct lrwanatd *lw, int fd);
+
+void free_http_client(struct lrwanatd *lw, struct http_client *client);
 #endif
