@@ -611,7 +611,7 @@ struct command_def cmd_def_list[] = {
 		.type = CMD_RESTORE_CONTEXT,
 		.group = CMD_INTERNAL,
 		.token = TOKEN_AT_CTX_RES,
-		.token_len = sizeof(TOKEN_AT_CTX_ACQ) - 1,
+		.token_len = sizeof(TOKEN_AT_CTX_RES) - 1,
 		.cmd = AT_CMD,
 		.cmd_len = sizeof(AT_CMD) - 1,
 		.construct_cmd = construct_context_restore_cmd,
@@ -995,7 +995,7 @@ enum cmd_res_code wait_for_good_timeout(struct command *cmd)
 	/* sometimes a epoc_timeout is okay :D */
 	time_t now = time(NULL);
 	if (cmd->epoc_timeout <= now) {
-		log(LOG_INFO, "command %p timed out.", cmd);
+		log(LOG_INFO, "Delay over.", cmd);
 		return CMD_RES_OK;
 	}
 	return CMD_RES_WAITING;

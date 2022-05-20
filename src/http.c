@@ -519,8 +519,8 @@ void process_http_clients(struct lrwanatd *lw)
 						case CMD_RES_TIMEOUT:
 							if (cmd->def.type != CMD_DELAY) {
 								client->timed_out = true;
+								log(LOG_INFO, "%p command timed out of type %d.", cmd, cmd->def.token);
 							}
-							log(LOG_INFO, "command timed out.");
 						case CMD_RES_OK:
 							cmd->state = CMD_EXECUTED;
 							log(LOG_INFO, "rx[len:%d]: %.*s", cmd->buf_len, cmd->buf_len, cmd->buf);
@@ -556,7 +556,7 @@ void process_http_clients(struct lrwanatd *lw)
 						/* Generate context save again */
 						context_manager_event(CMD_RESET, NULL);
 					} else {
-						context_manager_event(CMD_RESTORE_CONTEXT, NULL);
+						//context_manager_event(CMD_RESTORE_CONTEXT, NULL);
 					}
 
 					return;
