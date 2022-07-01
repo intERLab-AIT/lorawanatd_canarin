@@ -19,6 +19,7 @@ enum http_action {
 	HTTP_SET_CONFIG,
 	HTTP_SEND_DATA,
 	HTTP_SENDB_DATA,
+    HTTP_FORCE_UPDATE,
 };
 
 enum http_client_state {

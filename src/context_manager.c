@@ -113,6 +113,11 @@ void set_mac_params() {
 		bool check = bit_check & lwan_ctx.mac_params.dirty;
 		if (check) {
 			switch (param_type) {
+                case MAC_PARAM_ADR:
+                    token = TOKEN_AT_ADR;
+					memset(params_str[param_type], 0, 255);
+					sprintf(params_str[param_type], "%u", lwan_ctx.mac_params.params[param_type]);
+					break;
 				case MAC_PARAM_DATA_RATE:
 					token = TOKEN_AT_DR;
 					memset(params_str[param_type], 0, 255);
@@ -377,6 +382,8 @@ void context_manager_event(enum cmd_type cmd_type, struct command *cmd)
 			reset_lwan_ctx(true);
 			// write_context();
 			break;
+        case CMD_FORCE_UPDATE:
+            set_mac_params();
 		default:
 			break;
 	}

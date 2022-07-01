@@ -8,8 +8,10 @@
 #define PARAM_UNINIT UINT8_MAX
 
 /* Mac params, that gets reset after join. Check ResetMacParameters() in firmware. */
+// the order should be maintained to call the correct setting in sequence 
 enum mac_pram_type_e {
-	MAC_PARAM_DATA_RATE = 0,
+    MAC_PARAM_ADR = 0,
+	MAC_PARAM_DATA_RATE,
 	MAC_PARAM_TRANSMIT_POWER,
 	MAC_PARAM_RX1_DELAY,
 	MAC_PARAM_RX2_DELAY,

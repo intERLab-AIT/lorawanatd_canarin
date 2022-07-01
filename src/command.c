@@ -28,6 +28,7 @@ char * construct_join_cmd(struct command *cmd);
 char * construct_context_restore_cmd(struct command *cmd);
 char * construct_mac_param_cmd(struct command *cmd);
 char * construct_delay_cmd(struct command *cmd);
+char * construct_force_update_cmd(struct command *cmd);
 
 /* Process the rx function defs */
 enum cmd_res_code wait_for_ok(struct command *cmd);
@@ -398,9 +399,10 @@ struct command_def cmd_def_list[] = {
 		.token_len = sizeof(TOKEN_AT_ADR) - 1,
 		.cmd = AT_CMD_ADR,
 		.cmd_len = sizeof(AT_CMD_ADR) - 1,
-		.construct_cmd = construct_set_cmd,
+		.construct_cmd = construct_mac_param_cmd,
 		.process_cmd = wait_for_ok_or_timeout,
 		.async_cmd = NULL,
+        .local_state = true,
 	},
 	{
 		.type = CMD_SET_TXP,
@@ -626,6 +628,18 @@ struct command_def cmd_def_list[] = {
 		.cmd = AT_CMD_DELAY,
 		.cmd_len = sizeof(AT_CMD_DELAY) - 1,
 		.construct_cmd = construct_delay_cmd,
+		.process_cmd = wait_for_good_timeout,
+		.async_cmd = NULL,
+		.local_state = true,
+	},
+	{
+		.type = CMD_FORCE_UPDATE,
+		.group = CMD_INTERNAL,
+		.token = TOKEN_AT_FORCE_UPDATE,
+		.token_len = sizeof(TOKEN_AT_FORCE_UPDATE) - 1,
+		.cmd = AT_CMD_FORCE_UPDATE,
+		.cmd_len = sizeof(AT_CMD_FORCE_UPDATE) - 1,
+		.construct_cmd = construct_force_update_cmd,
 		.process_cmd = wait_for_good_timeout,
 		.async_cmd = NULL,
 		.local_state = true,
@@ -948,6 +962,17 @@ char * construct_mac_param_cmd(struct command *cmd)
 				log(LOG_INFO, "Rx2 Data Rate Set: %u", code);
 			}
 			break;
+        case CMD_SET_ADR:
+            if (code < 0 || code > 1) {
+                result = response[1];
+            }
+            else {
+				lw->ctx_mngr.lwan_ctx->mac_params.dirty |= MAC_PARAM_BIT(MAC_PARAM_ADR);
+				lw->ctx_mngr.lwan_ctx->mac_params.params[MAC_PARAM_ADR] = code;
+				result = response[0];
+				log(LOG_INFO, "ADR Set: %u", code);
+            }
+            break;
 	}
 
 	cmd->epoc_timeout = get_epoc_timeout(cmd);
@@ -965,6 +990,12 @@ char * construct_delay_cmd(struct command *cmd)
 	return delay_msg;
 }
 
+
+char * construct_force_update_cmd(struct command *cmd)
+{
+    log(LOG_INFO, "Force Update");
+    return response[0];
+}
 
 enum cmd_res_code wait_for_ok(struct command *cmd)
 {

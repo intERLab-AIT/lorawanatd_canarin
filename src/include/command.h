@@ -133,6 +133,10 @@
 #define AT_CMD_DELAY "DELAY"
 #define TOKEN_AT_DELAY "delay"
 
+/* Delay the board */
+#define AT_CMD_FORCE_UPDATE "FORCE_UPDATE"
+#define TOKEN_AT_FORCE_UPDATE "force_update"
+
 enum cmd_group {
 	CMD_ASYNC, /* Asynchronous events like RECV */
 	CMD_ACTION, /* Single one shot commands like AT, ATZ and AT+JOIN */
@@ -194,6 +198,7 @@ enum cmd_type {
 	CMD_ACQUIRE_CONTEXT,
 	CMD_RESTORE_CONTEXT,
 	CMD_DELAY,
+    CMD_FORCE_UPDATE,
 	CMD_TYPE_MAX,
 };
 

@@ -47,6 +47,8 @@ char * get_http_action_string(enum http_action action)
 			return "Send Data";
 		case HTTP_SENDB_DATA:
 			return "Send Binary Data";
+        case HTTP_FORCE_UPDATE:
+            return "Force Update";
 		default:
 			return "Unknown Action";
 	}
@@ -70,6 +72,10 @@ enum http_action get_action_from_http_request(struct http_client *client)
 	if (strncmp("GET", client->request.method , client->request.method_len) == 0
 			&& strncmp("/join", client->request.path, client->request.path_len) == 0)
 		return HTTP_JOIN;
+
+	if (strncmp("GET", client->request.method , client->request.method_len) == 0
+			&& strncmp("/force_update", client->request.path, client->request.path_len) == 0)
+		return HTTP_FORCE_UPDATE;
 
 	if (strncmp("POST", client->request.method , client->request.method_len) == 0
 			&& strncmp("/config/get", client->request.path, client->request.path_len) == 0)
@@ -160,6 +166,9 @@ int add_cmd(struct http_client *client)
 			cmd = make_cmd(TOKEN_AT_JOIN , sizeof(TOKEN_AT_JOIN) - 1,
 					NULL, 60,CMD_ACTION);
 			break;
+        case HTTP_FORCE_UPDATE:
+            cmd = make_cmd(TOKEN_AT_FORCE_UPDATE, sizeof (TOKEN_AT_FORCE_UPDATE) - 1,
+                    NULL, 1, CMD_INTERNAL);
 	}
 	if (cmd)
 		STAILQ_INSERT_TAIL(client->cmdq_head, cmd, entries);
