@@ -41,6 +41,7 @@ The API for HTTP usages are:
 /config/set | POST       | A json directory with param name and value: `{ "command1" : "param1", "command2" : "param2", ...}` | Set parameter values. |
 /send       | POST       | `{ "data" : "some data", "port" : 21 }`               | Send text data. |
 /sendb      | POST       | `{ "data" : "ff20d10fe", "port" : 21 }`               | Send hexadecimal data. |
+/force_update| GET       |                                                       | The MAC params are withheld until a successful join occours. Use this to force mac params to be written to the firmware. |
 
 
 
